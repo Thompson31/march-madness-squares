@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>March Madness Squares Pool</title>
+
+<!-- ════════════════════════════════════════════════════════════════
+     🔧  SETUP — paste your Firebase config here
+     ════════════════════════════════════════════════════════════════ -->
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyC5CamQLqXXXNq0F_pdr1Hds7ixLxik7sQ",
+    authDomain:        "poor-man-madness.firebaseapp.com",
+    databaseURL:       "https://poor-man-madness-default-rtdb.firebaseio.com",
+    projectId:         "poor-man-madness",
+    storageBucket:     "poor-man-madness.firebasestorage.app",
+    messagingSenderId: "835029294329",
+    appId:             "1:835029294329:web:d147c0958ece6e54a21628"
+  };
+  const ADMIN_PASSWORD = "madness2025";   // change this!
+  const SCORE_POLL_MS  = 30000;           // poll ESPN every 30 seconds
+</script>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #080c17;
+  --surf:    #13172a;
+  --surf2:   #1e2235;
+  --bdr:     #1e2340;
+  --bdr2:    #2a2d42;
+  --acc:     #f97316;
+  --acc2:    #fb923c;
+  --txt:     #e8e0d0;
+  --muted:   #8a8a9a;
+  --blue:    #1a3360;
+  --blue-b:  #1e4080;
+  --green:   #4ade80;
+  --red:     #ef4444;
+  --claimed: #93c5fd;
+  --live:    #f43f5e;
+  --gold:    #fbbf24;
+}
+body { background:var(--bg); color:var(--txt); font-family:'Georgia',serif; min-height:100vh; padding:20px 14px 110px; }
+h1   { font-size:32px; font-weight:700; letter-spacing:-1px; color:#fff; }
+label { display:block; font-family:sans-serif; font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+input { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--bdr2); border-radius:6px; color:#fff; font-family:sans-serif; font-size:14px; }
+input:focus { outline:2px solid var(--acc); border-color:transparent; }
+
+/* ── Buttons ── */
+.btn { padding:8px 16px; border-radius:6px; border:none; cursor:pointer; font-family:sans-serif; font-size:12px; font-weight:700; letter-spacing:.5px; background:var(--surf2); color:var(--muted); transition:all .15s; }
+.btn:hover  { background:#252848; color:var(--txt); }
+.btn.active { background:var(--acc); color:#fff; }
+.btn-sm     { padding:5px 11px; font-size:11px; }
+.btn-primary { padding:11px; background:var(--acc); border:none; border-radius:7px; color:#fff; font-family:sans-serif; font-weight:700; font-size:14px; cursor:pointer; transition:background .15s; }
+.btn-primary:hover { background:var(--acc2); }
+.btn-ghost { padding:11px 14px; background:transparent; border:1px solid var(--bdr2); border-radius:7px; color:var(--muted); font-family:sans-serif; font-size:14px; cursor:pointer; }
+.btn-danger { background:#3a0f0f !important; color:var(--red) !important; border:1px solid #7f1d1d !important; text-transform:uppercase; letter-spacing:1px; }
+
+/* ── Header ── */
+#header { text-align:center; margin-bottom:20px; }
+.tag { display:inline-block; background:linear-gradient(135deg,var(--acc),var(--acc2)); border-radius:4px; padding:2px 14px; margin-bottom:8px; font-size:10px; font-weight:700; letter-spacing:4px; color:#1a0a00; text-transform:uppercase; font-family:sans-serif; }
+#status-bar { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:6px; flex-wrap:wrap; font-family:sans-serif; font-size:12px; color:var(--muted); }
+.dot { color:var(--bdr2); }
+#live-dot { color:var(--green); font-weight:700; }
+#live-dot.saving { color:var(--acc); }
+
+/* ── Round tabs ── */
+#round-tabs { display:flex; justify-content:center; gap:5px; margin-bottom:18px; flex-wrap:wrap; }
+
+/* ── Grid ── */
+#grid-wrap  { overflow-x:auto; padding-bottom:12px; }
+#grid-inner { display:inline-block; min-width:440px; }
+.col-hdr    { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:2px; color:#555; text-transform:uppercase; text-align:center; margin-left:82px; margin-bottom:4px; }
+.col-nums   { display:flex; margin-left:82px; margin-bottom:2px; gap:2px; }
+.num-cell   { width:46px; height:22px; display:flex; align-items:center; justify-content:center; font-family:sans-serif; font-weight:700; font-size:13px; background:#13172a; border-radius:4px; color:#2a2d42; transition:color .3s; }
+.num-cell.drawn { color:var(--acc); }
+#grid-rows  { display:flex; gap:2px; }
+#row-labels { display:flex; flex-direction:column; gap:2px; }
+.row-spacer { height:46px; width:80px; }
+.row-lbl    { width:80px; height:46px; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; font-family:sans-serif; font-weight:700; font-size:13px; color:#2a2d42; transition:color .3s; }
+.row-lbl.drawn { color:var(--acc); }
+.row-axis   { font-family:sans-serif; font-size:9px; color:#555; text-transform:uppercase; letter-spacing:1px; writing-mode:vertical-rl; transform:rotate(180deg); line-height:1.2; }
+#sq-grid    { display:flex; flex-direction:column; gap:2px; }
+.sq-row     { display:flex; gap:2px; }
+.sq-spacer  { height:46px; }
+.square     { width:46px; height:46px; border-radius:5px; cursor:pointer; display:flex; align-items:center; justify-content:center; overflow:hidden; transition:border-color .12s,background .15s,box-shadow .2s,transform .1s; font-size:9px; font-family:sans-serif; font-weight:700; color:var(--claimed); text-align:center; padding:2px 3px; line-height:1.2; word-break:break-word; background:#10142a; border:1px solid var(--bdr); }
+.square.empty   { color:#1e2340; font-size:18px; }
+.square.empty:hover { border-color:var(--acc); background:#13172a; transform:scale(1.06); }
+.square.claimed { background:var(--blue); border-color:var(--blue-b); cursor:default; }
+.square.mine    { background:#2a1400; border-color:#7c3010; color:var(--acc); cursor:pointer; box-shadow:0 0 8px rgba(249,115,22,.3); }
+.square.mine:hover { border-color:var(--red); }
+.square.winner  { background:var(--acc)!important; border-color:var(--acc2)!important; color:#fff!important; box-shadow:0 0 18px rgba(249,115,22,.6)!important; animation:pop .4s ease; cursor:default; }
+
+/* ── Live scores section ── */
+#scores-section { max-width:600px; margin:24px auto 0; }
+#scores-header  { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+#scores-title   { font-family:sans-serif; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:8px; }
+.live-badge     { background:var(--live); color:#fff; font-size:9px; font-weight:700; letter-spacing:1.5px; padding:2px 7px; border-radius:3px; animation:pulse 2s infinite; }
+#scores-last-updated { font-family:sans-serif; font-size:10px; color:#555; }
+#scores-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+.score-card     { background:var(--surf); border:1px solid var(--bdr2); border-radius:10px; padding:12px 14px; cursor:pointer; transition:border-color .15s,box-shadow .15s; }
+.score-card:hover { border-color:var(--acc); box-shadow:0 0 10px rgba(249,115,22,.15); }
+.score-card.final  { border-color:#1e3a1e; }
+.score-card.live   { border-color:var(--live); box-shadow:0 0 8px rgba(244,63,94,.2); }
+.score-card.sched  { opacity:.6; }
+.score-card-status { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
+.sc-live  { color:var(--live); }
+.sc-final { color:var(--green); }
+.sc-sched { color:var(--muted); }
+.score-card-teams  { display:flex; flex-direction:column; gap:5px; }
+.score-team        { display:flex; align-items:center; justify-content:space-between; font-family:sans-serif; font-size:13px; }
+.score-team-name   { color:var(--txt); font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.score-team-score  { font-weight:700; font-size:16px; color:#fff; min-width:28px; text-align:right; }
+.score-team-digit  { font-size:9px; font-family:monospace; color:var(--acc); background:#2a1400; border-radius:3px; padding:1px 4px; margin-left:6px; }
+.score-card-hint   { font-family:sans-serif; font-size:10px; color:var(--muted); margin-top:8px; text-align:center; }
+#scores-empty      { font-family:sans-serif; font-size:13px; color:#555; text-align:center; padding:24px; }
+#scores-toggle     { margin-bottom:8px; }
+
+/* ── Winners leaderboard (public) ── */
+#winners-section { max-width:600px; margin:24px auto 0; }
+#winners-header  { font-family:sans-serif; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+#winners-list    { display:flex; flex-direction:column; gap:8px; }
+.winner-card     { background:var(--surf); border:1px solid #2a3320; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px; animation:fadeIn .3s ease; }
+.winner-trophy   { font-size:22px; flex-shrink:0; }
+.winner-info     { flex:1; }
+.winner-name     { font-family:sans-serif; font-weight:700; font-size:15px; color:#fff; }
+.winner-meta     { font-family:sans-serif; font-size:11px; color:var(--muted); margin-top:2px; }
+.winner-round    { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--acc); background:#2a1400; padding:3px 8px; border-radius:4px; }
+#winners-empty   { font-family:sans-serif; font-size:13px; color:#555; text-align:center; padding:20px; }
+
+/* ── Score finder ── */
+#score-section { max-width:600px; margin:24px auto 0; background:var(--surf); border-radius:12px; padding:18px 22px; border:1px solid var(--bdr2); }
+#score-section h3 { font-size:13px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+#score-inputs { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+.score-input  { width:68px; font-size:20px; font-weight:700; text-align:center; padding:7px 8px; }
+#winner-banner { margin-top:14px; padding:12px 16px; background:var(--acc); border-radius:8px; font-family:sans-serif; font-weight:700; font-size:14px; color:#fff; display:none; }
+
+/* ── Auto-winner toast overlay ── */
+#winner-splash {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.85);
+  z-index:400; align-items:center; justify-content:center; flex-direction:column; gap:16px;
+  text-align:center; padding:24px;
+}
+#winner-splash.open { display:flex; animation:fadeIn .4s ease; }
+#winner-splash-content { background:var(--surf); border:2px solid var(--acc); border-radius:18px; padding:36px 32px; max-width:360px; width:100%; box-shadow:0 0 60px rgba(249,115,22,.4); }
+#winner-splash h2 { font-family:sans-serif; font-size:28px; color:var(--acc); margin-bottom:6px; }
+#winner-splash-name  { font-family:sans-serif; font-size:24px; font-weight:700; color:#fff; margin:8px 0; }
+#winner-splash-detail { font-family:sans-serif; font-size:13px; color:var(--muted); line-height:1.6; }
+#winner-splash-close { margin-top:18px; padding:10px 28px; background:var(--acc); border:none; border-radius:8px; color:#fff; font-family:sans-serif; font-weight:700; font-size:14px; cursor:pointer; }
+
+/* ── Sticky session bar ── */
+#session-bar { position:fixed; bottom:0; left:0; right:0; background:#0d1120; border-top:2px solid var(--acc); z-index:100; transform:translateY(100%); transition:transform .3s ease; }
+#session-bar.visible { transform:translateY(0); }
+#session-inner { padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:linear-gradient(90deg,#1c0e03,#1a1208); }
+#session-avatar { width:36px; height:36px; border-radius:50%; background:var(--acc); display:flex; align-items:center; justify-content:center; font-family:sans-serif; font-weight:700; font-size:15px; color:#fff; flex-shrink:0; }
+#session-info { flex:1; min-width:120px; }
+#session-name  { font-family:sans-serif; font-weight:700; font-size:14px; color:#fff; }
+#session-count { font-family:sans-serif; font-size:11px; color:var(--acc2); margin-top:1px; }
+#session-actions { display:flex; gap:8px; }
+#session-done-btn   { padding:8px 18px; background:var(--green); border:none; border-radius:7px; color:#071a07; font-family:sans-serif; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; }
+#session-switch-btn { padding:8px 14px; background:transparent; border:1px solid var(--bdr2); border-radius:7px; color:var(--muted); font-family:sans-serif; font-size:12px; cursor:pointer; white-space:nowrap; }
+#session-hint { padding:6px 16px; font-family:sans-serif; font-size:11px; color:#555; text-align:center; border-top:1px solid var(--bdr); background:var(--bg); }
+
+/* ── No-session bar ── */
+#no-session-bar { position:fixed; bottom:0; left:0; right:0; background:var(--surf); border-top:1px solid var(--bdr2); padding:12px 16px; display:flex; align-items:center; justify-content:center; gap:14px; z-index:100; flex-wrap:wrap; }
+#no-session-bar span { font-family:sans-serif; font-size:13px; color:var(--muted); }
+#start-btn { padding:9px 22px; background:var(--acc); border:none; border-radius:7px; color:#fff; font-family:sans-serif; font-weight:700; font-size:13px; cursor:pointer; }
+
+/* ── Modals ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:300; align-items:center; justify-content:center; padding:16px; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--surf); border-radius:14px; padding:28px 28px 24px; border:1px solid var(--acc); width:100%; max-width:340px; box-shadow:0 0 40px rgba(249,115,22,.25); position:relative; max-height:90vh; overflow-y:auto; }
+.modal h3   { color:#fff; font-family:sans-serif; font-size:18px; margin-bottom:4px; }
+.modal .sub { font-family:sans-serif; font-size:12px; color:var(--muted); margin-bottom:18px; }
+.field      { margin-bottom:12px; }
+.form-error { font-family:sans-serif; font-size:12px; color:#f87171; margin-bottom:10px; display:none; }
+.modal-btns { display:flex; gap:8px; margin-top:4px; }
+.modal-note { margin-top:12px; font-family:sans-serif; font-size:10px; color:#555; line-height:1.5; text-align:center; }
+
+/* ── Admin modal ── */
+#admin-modal .modal { max-width:600px; border-color:var(--bdr2); box-shadow:none; }
+#admin-close { position:absolute; top:14px; right:18px; background:none; border:none; color:var(--muted); font-size:24px; cursor:pointer; }
+/* admin tabs */
+#admin-tabs { display:flex; gap:4px; margin:14px 0; border-bottom:1px solid var(--bdr2); padding-bottom:0; }
+.admin-tab { padding:8px 14px; background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; font-family:sans-serif; font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin-bottom:-1px; transition:all .15s; }
+.admin-tab.active { color:var(--acc); border-bottom-color:var(--acc); }
+.admin-pane { display:none; }
+.admin-pane.active { display:block; }
+/* tables */
+.admin-tbl { width:100%; border-collapse:collapse; font-family:sans-serif; font-size:12px; margin-top:8px; }
+.admin-tbl th { text-align:left; padding:6px 8px; color:var(--muted); font-weight:600; border-bottom:1px solid var(--surf2); white-space:nowrap; }
+.admin-tbl td { padding:6px 8px; border-bottom:1px solid #0e1120; vertical-align:middle; }
+.admin-tbl td:nth-child(1) { color:#555; }
+.win-badge { display:inline-block; background:#1a2a0a; color:var(--green); font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px; border:1px solid #2a4a1a; margin:1px; }
+#round-draw-btns { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.round-draw-btn { font-size:11px; padding:6px 12px; border:1px solid var(--bdr2); }
+.round-draw-btn.drawn { background:#1a3320 !important; color:var(--green) !important; border-color:#166534 !important; }
+.admin-section-title { font-family:sans-serif; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--acc); margin:20px 0 10px; }
+/* winners admin */
+.w-admin-card { background:#0e1120; border-radius:8px; padding:12px 14px; margin-bottom:8px; border:1px solid var(--bdr2); }
+.w-admin-round { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--acc); margin-bottom:6px; }
+.w-admin-name  { font-family:sans-serif; font-size:15px; font-weight:700; color:#fff; }
+.w-admin-meta  { font-family:sans-serif; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.6; }
+.venmo-link    { color:var(--green); font-weight:700; }
+
+/* ── Toast ── */
+#toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(8px); background:var(--surf2); color:var(--txt); padding:10px 20px; border-radius:8px; font-family:sans-serif; font-weight:600; font-size:13px; z-index:999; box-shadow:0 4px 20px rgba(0,0,0,.5); pointer-events:none; opacity:0; transition:opacity .2s,transform .2s; border:1px solid var(--bdr2); white-space:nowrap; }
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ── Setup overlay ── */
+#setup-overlay { display:none; position:fixed; inset:0; background:rgba(8,12,23,.97); z-index:500; align-items:center; justify-content:center; padding:20px; }
+#setup-overlay.open { display:flex; }
+#setup-box { background:var(--surf); border-radius:14px; padding:32px; max-width:520px; width:100%; border:1px solid var(--acc); }
+#setup-box h2 { color:#fff; font-family:sans-serif; margin-bottom:8px; }
+#setup-box p  { font-family:sans-serif; font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:14px; }
+#setup-box ol { font-family:sans-serif; font-size:13px; color:var(--muted); line-height:2.2; padding-left:20px; margin-bottom:18px; }
+#setup-box a  { color:var(--acc); }
+#setup-box code { background:#0a0e1a; color:#93c5fd; padding:2px 7px; border-radius:4px; font-size:12px; font-family:monospace; }
+
+@keyframes pop     { 0%{transform:scale(1)} 50%{transform:scale(1.14)} 100%{transform:scale(1)} }
+@keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.5} }
+@keyframes fadeIn  { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+</style>
+</head>
+<body>
+
+<!-- Setup overlay -->
+<div id="setup-overlay">
+  <div id="setup-box">
+    <h2>🏀 One-Time Setup</h2>
+    <p>This app uses a free <strong>Firebase Realtime Database</strong> for live sync. Takes ~5 minutes:</p>
+    <ol>
+      <li>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → <strong>Add project</strong></li>
+      <li>Click <strong>Realtime Database</strong> → <strong>Create database</strong> → any region → <strong>Start in test mode</strong></li>
+      <li><strong>Project Settings</strong> (gear) → <strong>Your apps</strong> → click <code>&lt;/&gt;</code> Web → register → copy the <code>firebaseConfig</code></li>
+      <li>Open <code>index.html</code> in a text editor → find <code>FIREBASE_CONFIG</code> at the top → paste your values</li>
+      <li>Drag <code>index.html</code> to <a href="https://app.netlify.com/drop" target="_blank">app.netlify.com/drop</a> → instant URL!</li>
+    </ol>
+    <p style="color:#f87171;font-size:12px;">⚠️ Firebase config not filled in yet.</p>
+  </div>
+</div>
+
+<!-- ════ APP ════ -->
+<div id="app">
+  <div id="header">
+    <div class="tag">March Madness</div>
+    <h1>Squares Pool</h1>
+    <div id="status-bar">
+      <span id="filled-count">0/100 squares claimed</span>
+      <span class="dot">·</span>
+      <span id="live-dot">● live</span>
+      <span class="dot">·</span>
+      <button class="btn" onclick="openAdmin()" style="font-size:11px;padding:4px 10px;color:#555">Admin</button>
+    </div>
+  </div>
+
+  <div id="round-tabs"></div>
+
+  <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+    <span id="round-name" style="font-family:sans-serif;font-weight:700;color:var(--acc);font-size:14px;"></span>
+    <span id="no-numbers-note" style="font-family:sans-serif;font-size:12px;color:rgba(249,115,22,.5);display:none;">⚠ Numbers not drawn yet</span>
+  </div>
+
+  <!-- Grid -->
+  <div id="grid-wrap">
+    <div id="grid-inner">
+      <div class="col-hdr">Home Team Ones Digit →</div>
+      <div class="col-nums" id="col-nums"></div>
+      <div id="grid-rows">
+        <div id="row-labels">
+          <div class="row-spacer" style="display:flex;align-items:center;justify-content:flex-end;padding-right:6px;">
+            <span class="row-axis">Away Ones Digit ↑</span>
+          </div>
+        </div>
+        <div>
+          <div class="sq-spacer"></div>
+          <div id="sq-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual score finder -->
+  <div id="score-section">
+    <h3 id="score-title">Find Winner · R64</h3>
+    <div id="score-inputs">
+      <div><label>Home Score</label><input type="number" min="0" id="home-score" class="score-input" placeholder="0" /></div>
+      <div><label>Away Score</label><input type="number" min="0" id="away-score" class="score-input" placeholder="0" /></div>
+      <button class="btn active" onclick="findWinner()">Find</button>
+      <button class="btn" id="clear-winner-btn" onclick="clearWinner()" style="display:none;">Clear</button>
+    </div>
+    <div id="winner-banner"></div>
+  </div>
+
+  <!-- Live scores -->
+  <div id="scores-section">
+    <div id="scores-header">
+      <div id="scores-title">
+        🏀 NCAA Tournament Scores
+        <span class="live-badge" id="scores-live-badge" style="display:none;">LIVE</span>
+      </div>
+      <span id="scores-last-updated"></span>
+    </div>
+    <div id="scores-grid"><div id="scores-empty" style="color:#555;font-family:sans-serif;font-size:13px;text-align:center;padding:20px;">Loading scores…</div></div>
+  </div>
+
+  <!-- Public winners leaderboard -->
+  <div id="winners-section">
+    <div id="winners-header">🏆 Round Winners</div>
+    <div id="winners-list"><div id="winners-empty" style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:20px;">No winners recorded yet.</div></div>
+  </div>
+</div>
+
+<!-- Winner splash -->
+<div id="winner-splash">
+  <div id="winner-splash-content">
+    <div style="font-size:48px;margin-bottom:4px;">🏆</div>
+    <h2>We Have a Winner!</h2>
+    <div id="winner-splash-name">–</div>
+    <div id="winner-splash-detail"></div>
+    <button id="winner-splash-close" onclick="document.getElementById('winner-splash').classList.remove('open')">Awesome!</button>
+  </div>
+</div>
+
+<!-- Session bar -->
+<div id="session-bar">
+  <div id="session-inner">
+    <div id="session-avatar">?</div>
+    <div id="session-info">
+      <div id="session-name">–</div>
+      <div id="session-count">Tap any open square to claim it</div>
+    </div>
+    <div id="session-actions">
+      <button id="session-switch-btn" onclick="switchUser()">Switch User</button>
+      <button id="session-done-btn"   onclick="endSession()">Done ✓</button>
+    </div>
+  </div>
+  <div id="session-hint">🟠 = yours (tap to release) · tap any open square to claim</div>
+</div>
+
+<div id="no-session-bar">
+  <span>Ready to pick your squares?</span>
+  <button id="start-btn" onclick="openIdentityModal()">Pick My Squares →</button>
+</div>
+
+<!-- ════ MODALS ════ -->
+<!-- Identity -->
+<div class="modal-overlay" id="identity-modal">
+  <div class="modal">
+    <h3>Who are you?</h3>
+    <p class="sub">Enter your info once — then tap as many squares as you want.</p>
+    <div class="field"><label>Your Name *</label><input type="text"   id="f-name"  placeholder="Jane Smith" /></div>
+    <div class="field"><label>Email Address *</label><input type="email" id="f-email" placeholder="jane@email.com" /></div>
+    <div class="field"><label>Venmo Handle *</label><input type="text"   id="f-venmo" placeholder="@jane-smith" /></div>
+    <p class="form-error" id="form-err"></p>
+    <div class="modal-btns">
+      <button class="btn-primary" onclick="startSession()" style="flex:1;">Start Picking →</button>
+    </div>
+    <p class="modal-note">Your email & Venmo are only visible to the pool admin.</p>
+  </div>
+</div>
+
+<!-- Unclaim confirm -->
+<div class="modal-overlay" id="unclaim-modal">
+  <div class="modal" style="border-color:var(--red);">
+    <h3>Release This Square?</h3>
+    <p class="sub" id="unclaim-sub"></p>
+    <div class="modal-btns">
+      <button class="btn-primary" style="background:var(--red);flex:1;" onclick="confirmUnclaim()">Yes, Release It</button>
+      <button class="btn-ghost" onclick="closeUnclaimModal()">Keep It</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin -->
+<div class="modal-overlay" id="admin-modal">
+  <div class="modal" style="max-width:600px;border-color:var(--bdr2);box-shadow:none;">
+    <button id="admin-close" onclick="closeAdmin()">×</button>
+    <h3 style="color:#fff;font-family:sans-serif;font-size:18px;">Admin Panel</h3>
+
+    <!-- Auth -->
+    <div id="admin-auth-section" style="margin-top:16px;">
+      <div class="field"><label>Password</label><input type="password" id="admin-pw" placeholder="Enter admin password…" onkeydown="if(event.key==='Enter')tryAdminLogin()" /></div>
+      <button class="btn active" onclick="tryAdminLogin()" style="padding:10px 20px;font-size:13px;">Unlock</button>
+    </div>
+
+    <!-- Content (after auth) -->
+    <div id="admin-content" style="display:none;">
+      <div id="admin-tabs">
+        <button class="admin-tab active" onclick="switchAdminTab('participants')">Participants</button>
+        <button class="admin-tab"        onclick="switchAdminTab('winners')">Winners</button>
+        <button class="admin-tab"        onclick="switchAdminTab('numbers')">Numbers</button>
+      </div>
+
+      <!-- Participants pane -->
+      <div id="pane-participants" class="admin-pane active">
+        <div style="overflow-x:auto;">
+          <table class="admin-tbl" id="admin-ptable">
+            <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Venmo</th><th>Squares</th><th>Won</th><th></th></tr></thead>
+            <tbody id="admin-ptbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Winners pane -->
+      <div id="pane-winners" class="admin-pane">
+        <div id="admin-winners-list"></div>
+        <p style="font-family:sans-serif;font-size:11px;color:#555;margin-top:14px;line-height:1.6;">
+          💡 Winners are auto-detected from live scores, or you can use the manual score finder on the main page. Venmo links make it easy to collect or pay out.
+        </p>
+      </div>
+
+      <!-- Numbers pane -->
+      <div id="pane-numbers" class="admin-pane">
+        <p style="font-family:sans-serif;font-size:12px;color:var(--muted);margin-bottom:14px;">Draw random numbers for each round. Numbers are locked in once all squares are claimed.</p>
+        <div id="round-draw-btns"></div>
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
+          <button class="btn btn-danger" onclick="resetAll()">Reset Entire Board</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ════ Firebase + App Logic ════ -->
+<script type="module">
+import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, update, remove }
+                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+if (FIREBASE_CONFIG.apiKey === "PASTE_YOUR_apiKey_HERE") {
+  document.getElementById("setup-overlay").classList.add("open");
+}
+
+const app  = initializeApp(FIREBASE_CONFIG);
+const db   = getDatabase(app);
+const ROOT = "mm-squares-v1";
+
+const ROUNDS = [
+  { id:"r64", label:"Round of 64",   short:"R64", espnWords:["first round","round of 64"] },
+  { id:"r32", label:"Round of 32",   short:"R32", espnWords:["second round","round of 32"] },
+  { id:"s16", label:"Sweet 16",      short:"S16", espnWords:["sweet 16","regional semifinal"] },
+  { id:"e8",  label:"Elite 8",       short:"E8",  espnWords:["elite eight","elite 8","regional final"] },
+  { id:"ff",  label:"Final Four",    short:"FF",  espnWords:["final four","national semifinal"] },
+  { id:"ch",  label:"Championship",  short:"CH",  espnWords:["national championship","championship"] },
+];
+
+const shuffle = a => [...a].sort(() => Math.random() - 0.5);
+const digits  = [0,1,2,3,4,5,6,7,8,9];
+const trunc   = (s,n=9) => s.length > n ? s.slice(0,n)+"…" : s;
+
+// ── App state ────────────────────────────────────────────────────────
+let state       = { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{} };
+let activeRound = "r64";
+let adminAuthed = false;
+let adminTab    = "participants";
+let session     = null;
+let unclaimIdx  = null;
+let espnGames   = [];
+let seenFinalIds = new Set();  // games already processed for auto-winner
+
+// ── Firebase ─────────────────────────────────────────────────────────
+onValue(ref(db, ROOT), snap => {
+  state = snap.val() ?? { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{} };
+  if (!state.winnerDetails) state.winnerDetails = {};
+  render();
+});
+
+// ── ESPN score polling ────────────────────────────────────────────────
+async function fetchScores() {
+  try {
+    const url = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?limit=100&groups=100";
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const events = data.events ?? [];
+
+    const games = events.map(ev => {
+      const comp   = ev.competitions?.[0] ?? {};
+      const home   = comp.competitors?.find(c => c.homeAway === "home");
+      const away   = comp.competitors?.find(c => c.homeAway === "away");
+      const status = ev.status?.type;
+      const noteText = (comp.notes?.[0]?.headline ?? "").toLowerCase();
+      const roundId  = ROUNDS.find(r => r.espnWords.some(w => noteText.includes(w)))?.id ?? null;
+
+      return {
+        id:        ev.id,
+        name:      ev.name,
+        roundId,
+        homeTeam:  home?.team?.shortDisplayName ?? home?.team?.abbreviation ?? "Home",
+        homeScore: parseInt(home?.score ?? "0") || 0,
+        awayTeam:  away?.team?.shortDisplayName ?? away?.team?.abbreviation ?? "Away",
+        awayScore: parseInt(away?.score ?? "0") || 0,
+        statusName:    status?.name ?? "",
+        statusDetail:  status?.shortDetail ?? "",
+        isLive:    status?.name === "STATUS_IN_PROGRESS",
+        isFinal:   status?.completed === true,
+        isScheduled: status?.name === "STATUS_SCHEDULED",
+      };
+    });
+
+    espnGames = games;
+    renderScores();
+
+    // Auto-winner detection for newly finished games
+    for (const g of games) {
+      if (!g.isFinal || seenFinalIds.has(g.id)) continue;
+      seenFinalIds.add(g.id);
+      if (!g.roundId) continue;
+      const rn = state.roundNumbers?.[g.roundId];
+      if (!rn?.cols || !rn?.rows) continue;
+      if (state.winners?.[g.roundId] != null) continue; // already has winner
+      const col = rn.cols.indexOf(((g.homeScore%10)+10)%10);
+      const row = rn.rows.indexOf(((g.awayScore%10)+10)%10);
+      if (col === -1 || row === -1) continue;
+      const idx = row*10+col;
+      const sq  = state.squares?.[String(idx)];
+      // Save to Firebase
+      await update(ref(db, ROOT), {
+        [`winners/${g.roundId}`]: idx,
+        [`winnerDetails/${g.roundId}`]: {
+          squareIdx: idx,
+          homeTeam: g.homeTeam, awayTeam: g.awayTeam,
+          homeScore: g.homeScore, awayScore: g.awayScore,
+          gameId: g.id,
+          recordedAt: Date.now()
+        }
+      });
+      // Show splash if page is visible
+      showWinnerSplash(g.roundId, idx, sq, g);
+    }
+
+    // Update last-updated
+    document.getElementById("scores-last-updated").textContent =
+      "Updated " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+    const hasLive = games.some(g => g.isLive);
+    document.getElementById("scores-live-badge").style.display = hasLive ? "inline" : "none";
+
+  } catch(e) {
+    document.getElementById("scores-last-updated").textContent = "Score fetch failed";
+  }
+}
+
+// Poll
+fetchScores();
+setInterval(fetchScores, SCORE_POLL_MS);
+
+// ── Render ────────────────────────────────────────────────────────────
+function render() {
+  renderTabs();
+  renderNumbers();
+  renderSquares();
+  renderWinnerBanner();
+  renderStatusBar();
+  renderSessionBar();
+  renderWinnersLeaderboard();
+  if (adminAuthed) renderAdminContent();
+}
+
+function renderTabs() {
+  document.getElementById("round-tabs").innerHTML = ROUNDS.map(r => {
+    const hasW = state.winners?.[r.id] != null;
+    return `<button class="btn ${activeRound===r.id?'active':''}" onclick="setRound('${r.id}')">
+      ${r.short}${hasW?` <span style="color:${activeRound===r.id?'#fff':'var(--acc)'}">🏆</span>`:''}
+    </button>`;
+  }).join("");
+  document.getElementById("round-name").textContent = ROUNDS.find(r=>r.id===activeRound).label;
+  document.getElementById("score-title").textContent = `Find Winner · ${ROUNDS.find(r=>r.id===activeRound).short}`;
+}
+
+function renderNumbers() {
+  const rn = state.roundNumbers?.[activeRound];
+  document.getElementById("col-nums").innerHTML =
+    Array(10).fill(0).map((_,ci) =>
+      `<div class="num-cell ${rn?.cols?'drawn':''}">${rn?.cols?rn.cols[ci]:'?'}</div>`
+    ).join("");
+  const rl = document.getElementById("row-labels");
+  while (rl.children.length > 1) rl.removeChild(rl.lastChild);
+  for (let ri=0;ri<10;ri++) {
+    const d = document.createElement("div");
+    d.className = "row-lbl"+(rn?.rows?" drawn":"");
+    d.textContent = rn?.rows ? rn.rows[ri] : "?";
+    rl.appendChild(d);
+  }
+  document.getElementById("no-numbers-note").style.display = rn?.cols?"none":"inline";
+}
+
+function renderSquares() {
+  const grid   = document.getElementById("sq-grid");
+  grid.innerHTML = "";
+  const winner = state.winners?.[activeRound] ?? null;
+  for (let ri=0;ri<10;ri++) {
+    const row = document.createElement("div");
+    row.className = "sq-row";
+    for (let ci=0;ci<10;ci++) {
+      const idx    = ri*10+ci;
+      const sq     = state.squares?.[String(idx)];
+      const isW    = winner === idx;
+      const isMine = session && sq && sq.email === session.email;
+      const el     = document.createElement("div");
+      if (isW) {
+        el.className   = "square winner";
+        el.textContent = sq ? trunc(sq.name) : "?";
+        el.title       = sq?.name ?? "unclaimed winner";
+      } else if (isMine) {
+        el.className   = "square mine";
+        el.textContent = trunc(sq.name);
+        el.title       = "Your square — tap to release";
+        el.onclick     = () => openUnclaimModal(idx);
+      } else if (sq) {
+        el.className   = "square claimed";
+        el.textContent = trunc(sq.name);
+        el.title       = sq.name;
+      } else {
+        el.className   = "square empty";
+        el.textContent = "+";
+        el.title       = `Claim square #${idx+1}`;
+        el.onclick     = () => handleSquareClick(idx);
+      }
+      row.appendChild(el);
+    }
+    grid.appendChild(row);
+  }
+}
+
+function renderWinnerBanner() {
+  const idx    = state.winners?.[activeRound] ?? null;
+  const banner = document.getElementById("winner-banner");
+  const clrBtn = document.getElementById("clear-winner-btn");
+  if (idx != null) {
+    const sq = state.squares?.[String(idx)];
+    const det = state.winnerDetails?.[activeRound];
+    const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "";
+    banner.style.display = "block";
+    banner.innerHTML = `🏆 Square #${idx+1} — <strong>${sq?.name ?? "Unclaimed"}</strong>${scoreStr?`<br><span style="font-weight:400;font-size:12px;opacity:.85">${scoreStr}</span>`:""}`;
+    clrBtn.style.display = "inline-block";
+  } else {
+    banner.style.display = "none";
+    clrBtn.style.display = "none";
+  }
+}
+
+function renderStatusBar() {
+  document.getElementById("filled-count").textContent =
+    `${Object.keys(state.squares??{}).length}/100 squares claimed`;
+}
+
+function renderSessionBar() {
+  const bar   = document.getElementById("session-bar");
+  const noBar = document.getElementById("no-session-bar");
+  if (session) {
+    bar.classList.add("visible"); noBar.style.display="none";
+    document.getElementById("session-avatar").textContent = session.name.charAt(0).toUpperCase();
+    document.getElementById("session-name").textContent   = session.name;
+    const n = Object.values(state.squares??{}).filter(s=>s.email===session.email).length;
+    document.getElementById("session-count").textContent  =
+      n===0 ? "Tap any open square to claim it"
+      : n===1 ? "1 square claimed — tap more or hit Done"
+      : `${n} squares claimed — tap more or hit Done`;
+  } else {
+    bar.classList.remove("visible"); noBar.style.display="flex";
+  }
+}
+
+function renderScores() {
+  const grid = document.getElementById("scores-grid");
+  const tourn = espnGames.filter(g => true); // all tournament games
+  if (!tourn.length) {
+    grid.innerHTML = `<div id="scores-empty">No tournament games found. Games will appear here when the tournament starts.</div>`;
+    return;
+  }
+  // Sort: live first, then final, then scheduled
+  const sorted = [...tourn].sort((a,b) => {
+    const rank = g => g.isLive?0:g.isFinal?1:2;
+    return rank(a)-rank(b);
+  });
+  grid.innerHTML = sorted.map(g => {
+    const cls    = g.isLive?"live":g.isFinal?"final":"sched";
+    const stCls  = g.isLive?"sc-live":g.isFinal?"sc-final":"sc-sched";
+    const stLbl  = g.isLive?`🔴 ${g.statusDetail}`:g.isFinal?"✓ Final":g.statusDetail;
+    const rn     = state.roundNumbers?.[activeRound];
+    const hd     = rn?.cols ? `<span class="score-team-digit">${((g.homeScore%10)+10)%10}</span>` : "";
+    const ad     = rn?.cols ? `<span class="score-team-digit">${((g.awayScore%10)+10)%10}</span>` : "";
+    const hint   = g.isFinal && rn?.cols ? `<div class="score-card-hint">Click to auto-fill score finder</div>` : "";
+    return `<div class="score-card ${cls}" onclick="fillScoreFinder(${g.homeScore},${g.awayScore})" title="${g.isFinal?'Click to auto-fill finder':''}">
+      <div class="score-card-status ${stCls}">${stLbl}</div>
+      <div class="score-card-teams">
+        <div class="score-team">
+          <span class="score-team-name">${g.homeTeam} <span style="font-size:9px;color:#555">(Home)</span></span>
+          <span class="score-team-score">${g.isFinal||g.isLive?g.homeScore:""}</span>${hd}
+        </div>
+        <div class="score-team">
+          <span class="score-team-name">${g.awayTeam} <span style="font-size:9px;color:#555">(Away)</span></span>
+          <span class="score-team-score">${g.isFinal||g.isLive?g.awayScore:""}</span>${ad}
+        </div>
+      </div>${hint}
+    </div>`;
+  }).join("");
+}
+
+function renderWinnersLeaderboard() {
+  const list = document.getElementById("winners-list");
+  const items = ROUNDS.map(r => {
+    const idx = state.winners?.[r.id] ?? null;
+    if (idx == null) return null;
+    const sq  = state.squares?.[String(idx)];
+    const det = state.winnerDetails?.[r.id];
+    return { round:r, idx, sq, det };
+  }).filter(Boolean);
+
+  if (!items.length) {
+    list.innerHTML = `<div id="winners-empty" style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:20px;">No winners yet — they'll appear here automatically when games finish.</div>`;
+    return;
+  }
+  list.innerHTML = items.map(({round,idx,sq,det}) => {
+    const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "";
+    return `<div class="winner-card">
+      <div class="winner-trophy">🏆</div>
+      <div class="winner-info">
+        <div class="winner-name">${sq?.name ?? `Square #${idx+1} (Unclaimed)`}</div>
+        <div class="winner-meta">Square #${idx+1}${scoreStr?` · ${scoreStr}`:""}</div>
+      </div>
+      <div class="winner-round">${round.short}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderAdminContent() {
+  renderAdminParticipants();
+  renderAdminWinners();
+  renderAdminNumbers();
+}
+
+function renderAdminParticipants() {
+  const tbody = document.getElementById("admin-ptbody");
+  // Group by person (email)
+  const people = {};
+  for (let i=0;i<100;i++) {
+    const sq = state.squares?.[String(i)];
+    if (!sq) continue;
+    if (!people[sq.email]) people[sq.email] = { name:sq.name, email:sq.email, venmo:sq.venmo, squares:[] };
+    people[sq.email].squares.push(i);
+  }
+  // Which squares are winners
+  const winnerSquares = {};
+  for (const r of ROUNDS) {
+    const idx = state.winners?.[r.id];
+    if (idx != null) winnerSquares[idx] = r.short;
+  }
+  const rows = Object.values(people);
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#555;padding:14px 8px;font-family:sans-serif;">No participants yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((p,i) => {
+    const wons = p.squares.filter(s => winnerSquares[s]).map(s => `<span class="win-badge">${winnerSquares[s]}</span>`).join("");
+    return `<tr>
+      <td>${i+1}</td>
+      <td style="color:var(--txt);font-weight:600;">${p.name}</td>
+      <td style="color:#93c5fd;">${p.email}</td>
+      <td style="color:var(--green);"><a href="https://venmo.com/${p.venmo}" target="_blank" class="venmo-link">@${p.venmo}</a></td>
+      <td style="color:var(--muted);">${p.squares.length}</td>
+      <td>${wons || '<span style="color:#555">—</span>'}</td>
+      <td><button onclick="adminUnclaimAll('${p.email}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;font-family:sans-serif;">Remove</button></td>
+    </tr>`;
+  }).join("");
+}
+
+function renderAdminWinners() {
+  const container = document.getElementById("admin-winners-list");
+  const items = ROUNDS.map(r => {
+    const idx = state.winners?.[r.id] ?? null;
+    if (idx == null) return null;
+    const sq  = state.squares?.[String(idx)];
+    const det = state.winnerDetails?.[r.id];
+    return { round:r, idx, sq, det };
+  }).filter(Boolean);
+
+  if (!items.length) {
+    container.innerHTML = `<p style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:20px;">No winners recorded yet.</p>`;
+    return;
+  }
+  container.innerHTML = items.map(({round,idx,sq,det}) => {
+    const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "Score not recorded";
+    const venmoLink = sq?.venmo ? `<a href="https://venmo.com/${sq.venmo}" target="_blank" class="venmo-link">Pay @${sq.venmo} on Venmo →</a>` : "";
+    return `<div class="w-admin-card">
+      <div class="w-admin-round">${round.label}</div>
+      <div class="w-admin-name">${sq?.name ?? `Square #${idx+1} (Unclaimed)`}</div>
+      <div class="w-admin-meta">
+        Square #${idx+1} · ${scoreStr}<br>
+        ${sq?.email ? `📧 ${sq.email}<br>` : ""}
+        ${venmoLink}
+      </div>
+      <div style="margin-top:8px;">
+        <button onclick="adminClearWinner('${round.id}')" class="btn btn-sm" style="font-size:10px;color:var(--red);background:none;border:1px solid #3a1010;padding:3px 10px;">Clear Winner</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderAdminNumbers() {
+  document.getElementById("round-draw-btns").innerHTML = ROUNDS.map(r => {
+    const drawn = !!state.roundNumbers?.[r.id]?.cols;
+    return `<button class="btn round-draw-btn ${drawn?'drawn':''}" onclick="drawRound('${r.id}')">${r.short} ${drawn?'✓ Drawn':'Draw'}</button>`;
+  }).join("");
+}
+
+// ── Winner splash ────────────────────────────────────────────────────
+function showWinnerSplash(roundId, idx, sq, game) {
+  const round = ROUNDS.find(r=>r.id===roundId);
+  document.getElementById("winner-splash-name").textContent = sq?.name ?? `Square #${idx+1} (Unclaimed)`;
+  document.getElementById("winner-splash-detail").innerHTML =
+    `${round.label} Winner · Square #${idx+1}<br>
+     ${game.awayTeam} ${game.awayScore} – ${game.homeTeam} ${game.homeScore}`;
+  document.getElementById("winner-splash").classList.add("open");
+}
+
+// ── Actions ──────────────────────────────────────────────────────────
+window.setRound = id => { activeRound = id; render(); renderScores(); };
+
+window.openIdentityModal = () => {
+  ["f-name","f-email","f-venmo"].forEach(id => document.getElementById(id).value="");
+  document.getElementById("form-err").style.display="none";
+  document.getElementById("identity-modal").classList.add("open");
+  setTimeout(() => document.getElementById("f-name").focus(), 60);
+};
+
+window.startSession = () => {
+  const name  = document.getElementById("f-name").value.trim();
+  const email = document.getElementById("f-email").value.trim();
+  const venmo = document.getElementById("f-venmo").value.trim().replace(/^@/,"");
+  if (!name)  { showErr("Name is required."); return; }
+  if (!email) { showErr("Email is required."); return; }
+  if (!/\S+@\S+\.\S+/.test(email)) { showErr("Enter a valid email."); return; }
+  if (!venmo) { showErr("Venmo handle is required."); return; }
+  session = { name, email, venmo };
+  document.getElementById("identity-modal").classList.remove("open");
+  render();
+  toast(`Welcome, ${name}! Tap any open square to claim it.`);
+};
+
+window.endSession = () => {
+  const n = session?.name ?? "You";
+  const c = Object.values(state.squares??{}).filter(s=>s.email===session?.email).length;
+  session = null; render();
+  toast(c > 0 ? `Done! ${n} claimed ${c} square${c>1?'s':''}.` : "Session ended.");
+};
+
+window.switchUser = () => { session = null; render(); openIdentityModal(); };
+
+window.handleSquareClick = async idx => {
+  if (!session) { openIdentityModal(); return; }
+  if (state.squares?.[String(idx)]) { toast("Just taken — pick another!"); return; }
+  setSaving(true);
+  try {
+    await set(ref(db, `${ROOT}/squares/${idx}`), {
+      name: session.name, email: session.email, venmo: session.venmo, claimedAt: Date.now()
+    });
+    toast(`✓ Square #${idx+1} claimed!`);
+  } catch { toast("Error saving — try again"); }
+  setSaving(false);
+};
+
+window.openUnclaimModal = idx => {
+  unclaimIdx = idx;
+  document.getElementById("unclaim-sub").textContent = `Square #${idx+1} will be released.`;
+  document.getElementById("unclaim-modal").classList.add("open");
+};
+window.closeUnclaimModal = () => {
+  document.getElementById("unclaim-modal").classList.remove("open");
+  unclaimIdx = null;
+};
+window.confirmUnclaim = async () => {
+  const idx = unclaimIdx; closeUnclaimModal();
+  if (idx == null) return;
+  await remove(ref(db, `${ROOT}/squares/${idx}`));
+  toast(`Square #${idx+1} released.`);
+};
+
+window.fillScoreFinder = (home, away) => {
+  document.getElementById("home-score").value = home;
+  document.getElementById("away-score").value = away;
+  document.getElementById("score-section").scrollIntoView({ behavior:"smooth", block:"center" });
+};
+
+window.findWinner = async () => {
+  const rn = state.roundNumbers?.[activeRound];
+  if (!rn?.cols) { toast("Draw numbers for this round first!"); return; }
+  const hs = parseInt(document.getElementById("home-score").value);
+  const as = parseInt(document.getElementById("away-score").value);
+  if (isNaN(hs)||isNaN(as)) { toast("Enter valid scores."); return; }
+  const col = rn.cols.indexOf(((hs%10)+10)%10);
+  const row = rn.rows.indexOf(((as%10)+10)%10);
+  const idx = row*10+col;
+  setSaving(true);
+  await update(ref(db, ROOT), {
+    [`winners/${activeRound}`]: idx,
+    [`winnerDetails/${activeRound}`]: {
+      squareIdx: idx, homeScore: hs, awayScore: as,
+      homeTeam: "Home", awayTeam: "Away",
+      recordedAt: Date.now()
+    }
+  });
+  setSaving(false);
+  const sq = state.squares?.[String(idx)];
+  toast(sq ? `🏆 Winner: ${sq.name}!` : `🏆 Square #${idx+1} wins (unclaimed)`);
+};
+
+window.clearWinner = async () => {
+  await remove(ref(db, `${ROOT}/winners/${activeRound}`));
+  await remove(ref(db, `${ROOT}/winnerDetails/${activeRound}`));
+  document.getElementById("home-score").value = "";
+  document.getElementById("away-score").value = "";
+};
+
+window.openAdmin  = () => document.getElementById("admin-modal").classList.add("open");
+window.closeAdmin = () => document.getElementById("admin-modal").classList.remove("open");
+
+window.tryAdminLogin = () => {
+  if (document.getElementById("admin-pw").value === ADMIN_PASSWORD) {
+    adminAuthed = true;
+    document.getElementById("admin-auth-section").style.display = "none";
+    document.getElementById("admin-content").style.display = "block";
+    renderAdminContent();
+  } else { toast("Wrong password."); }
+};
+
+window.switchAdminTab = tab => {
+  adminTab = tab;
+  document.querySelectorAll(".admin-tab").forEach((t,i) => {
+    const tabs = ["participants","winners","numbers"];
+    t.classList.toggle("active", tabs[i]===tab);
+  });
+  document.querySelectorAll(".admin-pane").forEach(p => p.classList.remove("active"));
+  document.getElementById(`pane-${tab}`).classList.add("active");
+  renderAdminContent();
+};
+
+window.adminUnclaimAll = async email => {
+  if (!confirm(`Remove ALL squares for this person?`)) return;
+  const updates = {};
+  for (let i=0;i<100;i++) {
+    if (state.squares?.[String(i)]?.email === email) updates[`squares/${i}`] = null;
+  }
+  if (Object.keys(updates).length) await update(ref(db, ROOT), updates);
+  toast("Squares removed.");
+};
+
+window.adminClearWinner = async roundId => {
+  await remove(ref(db, `${ROOT}/winners/${roundId}`));
+  await remove(ref(db, `${ROOT}/winnerDetails/${roundId}`));
+  toast("Winner cleared.");
+};
+
+window.drawRound = async roundId => {
+  setSaving(true);
+  await update(ref(db, `${ROOT}/roundNumbers/${roundId}`), { cols:shuffle(digits), rows:shuffle(digits) });
+  setSaving(false);
+  toast(`Numbers drawn for ${ROUNDS.find(r=>r.id===roundId).label}`);
+};
+
+window.resetAll = async () => {
+  if (!confirm("Reset ALL squares, numbers, and winners? This cannot be undone.")) return;
+  await set(ref(db, ROOT), { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{} });
+  espnGames=[]; seenFinalIds=new Set();
+  toast("Board reset.");
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function showErr(msg) { const e=document.getElementById("form-err"); e.textContent=msg; e.style.display="block"; }
+
+let toastTimer;
+function toast(msg) {
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove("show"),2800);
+}
+function setSaving(on) {
+  const el=document.getElementById("live-dot");
+  el.textContent=on?"saving…":"● live"; el.classList.toggle("saving",on);
+}
+
+["identity-modal","admin-modal","unclaim-modal"].forEach(id => {
+  document.getElementById(id).addEventListener("click", e => {
+    if (e.target===e.currentTarget) {
+      e.currentTarget.classList.remove("open");
+      if (id==="unclaim-modal") unclaimIdx=null;
+    }
+  });
+});
+document.getElementById("home-score").addEventListener("keydown", e=>e.key==="Enter"&&findWinner());
+document.getElementById("away-score").addEventListener("keydown", e=>e.key==="Enter"&&findWinner());
+document.getElementById("f-venmo").addEventListener("keydown",   e=>e.key==="Enter"&&startSession());
+
+render();
+</script>
+</body>
+</html>
