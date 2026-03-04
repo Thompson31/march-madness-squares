@@ -1113,6 +1113,7 @@ function renderScoreModeBtns() {
   tBtn.classList.toggle("active", mode === "tournament");
   lbl.textContent = mode === "tournament" ? "Filtering to NCAA Tournament games only" : "Showing all D1 games";
 }
+window.openAdmin  = () => document.getElementById("admin-modal").classList.add("open");
 window.closeAdmin = () => document.getElementById("admin-modal").classList.remove("open");
 
 window.tryAdminLogin = () => {
