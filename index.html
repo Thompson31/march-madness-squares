@@ -267,12 +267,12 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
   <!-- Grid -->
   <div id="grid-wrap">
     <div id="grid-inner">
-      <div class="col-hdr">Home Team Ones Digit →</div>
+      <div class="col-hdr">Winning Team Ones Digit →</div>
       <div class="col-nums" id="col-nums"></div>
       <div id="grid-rows">
         <div id="row-labels">
           <div class="row-spacer" style="display:flex;align-items:center;justify-content:flex-end;padding-right:6px;">
-            <span class="row-axis">Away Ones Digit ↑</span>
+            <span class="row-axis">Losing Team Ones Digit ↑</span>
           </div>
         </div>
         <div>
@@ -283,17 +283,8 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
     </div>
   </div>
 
-  <!-- Manual score finder -->
-  <div id="score-section">
-    <h3 id="score-title">Find Winner · R64</h3>
-    <div id="score-inputs">
-      <div><label>Home Score</label><input type="number" min="0" id="home-score" class="score-input" placeholder="0" /></div>
-      <div><label>Away Score</label><input type="number" min="0" id="away-score" class="score-input" placeholder="0" /></div>
-      <button class="btn active" onclick="findWinner()">Find</button>
-      <button class="btn" id="clear-winner-btn" onclick="clearWinner()" style="display:none;">Clear</button>
-    </div>
-    <div id="winner-banner"></div>
-  </div>
+  <!-- Current round winner banner (read-only, public) -->
+  <div id="winner-banner-public" style="max-width:600px;margin:16px auto 0;padding:12px 16px;background:var(--acc);border-radius:8px;font-family:sans-serif;font-weight:700;font-size:14px;color:#fff;display:none;text-align:center;"></div>
 
   <!-- Live scores -->
   <div id="scores-section">
@@ -344,6 +335,7 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 <div id="no-session-bar">
   <span>Ready to pick your squares?</span>
   <button id="start-btn" onclick="openIdentityModal()">Pick My Squares →</button>
+  <button class="btn" onclick="openViewModal()" style="font-size:12px;padding:8px 14px;">View My Squares</button>
 </div>
 
 <!-- ════ MODALS ════ -->
@@ -371,6 +363,24 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
     <div class="modal-btns">
       <button class="btn-primary" style="background:var(--red);flex:1;" onclick="confirmUnclaim()">Yes, Release It</button>
       <button class="btn-ghost" onclick="closeUnclaimModal()">Keep It</button>
+    </div>
+  </div>
+</div>
+
+<!-- View My Squares modal -->
+<div class="modal-overlay" id="view-modal">
+  <div class="modal" style="max-width:420px;">
+    <h3>View My Squares</h3>
+    <p class="sub">Enter your email to see your squares and the digits for each round.</p>
+    <div class="field"><label>Email Address</label><input type="email" id="view-email" placeholder="jane@email.com" /></div>
+    <p class="form-error" id="view-err"></p>
+    <div class="modal-btns">
+      <button class="btn-primary" onclick="lookupMySquares()" style="flex:1;">Look Up →</button>
+      <button class="btn-ghost" onclick="closeViewModal()">Cancel</button>
+    </div>
+    <!-- Results shown here -->
+    <div id="view-results" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid var(--bdr2);">
+      <div id="view-results-content"></div>
     </div>
   </div>
 </div>
@@ -408,8 +418,31 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
       <!-- Winners pane -->
       <div id="pane-winners" class="admin-pane">
         <div id="admin-winners-list"></div>
+
+        <!-- Manual score finder (admin only) -->
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--bdr2);">
+          <div class="admin-section-title" style="margin-top:0;">Manual Score Preview</div>
+          <p style="font-family:sans-serif;font-size:12px;color:var(--muted);margin-bottom:12px;">Preview which square wins for a given score. This does <strong style="color:#fff;">not</strong> save a winner — only ESPN auto-detection does that.</p>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <label>Round</label>
+              <select id="admin-round-sel" style="width:auto;padding:9px 10px;background:var(--bg);border:1px solid var(--bdr2);border-radius:6px;color:#fff;font-family:sans-serif;font-size:13px;">
+                <option value="r64">Round of 64</option>
+                <option value="r32">Round of 32</option>
+                <option value="s16">Sweet 16</option>
+                <option value="e8">Elite 8</option>
+                <option value="ff">Final Four</option>
+                <option value="ch">Championship</option>
+              </select>
+            </div>
+            <div><label>Winning Score</label><input type="number" min="0" id="home-score" class="score-input" placeholder="0" style="width:68px;font-size:20px;font-weight:700;text-align:center;padding:7px 8px;" /></div>
+            <div><label>Losing Score</label><input type="number" min="0" id="away-score" class="score-input" placeholder="0" style="width:68px;font-size:20px;font-weight:700;text-align:center;padding:7px 8px;" /></div>
+            <button class="btn active" onclick="findWinner()">Preview Square</button>
+          </div>
+          <div id="winner-banner" style="padding:12px 16px;background:var(--acc);border-radius:8px;font-family:sans-serif;font-weight:700;font-size:14px;color:#fff;display:none;"></div>
+        </div>
         <p style="font-family:sans-serif;font-size:11px;color:#555;margin-top:14px;line-height:1.6;">
-          💡 Winners are auto-detected from live scores, or you can use the manual score finder on the main page. Venmo links make it easy to collect or pay out.
+          💡 Winners auto-detected from live scores appear above automatically. Venmo links make payouts easy.
         </p>
       </div>
 
@@ -488,18 +521,32 @@ async function fetchScores() {
       const noteText = (comp.notes?.[0]?.headline ?? "").toLowerCase();
       const roundId  = ROUNDS.find(r => r.espnWords.some(w => noteText.includes(w)))?.id ?? null;
 
+      const homeScore = parseInt(home?.score ?? "0") || 0;
+      const awayScore = parseInt(away?.score ?? "0") || 0;
+      const homeName  = home?.team?.shortDisplayName ?? home?.team?.abbreviation ?? "Home";
+      const awayName  = away?.team?.shortDisplayName ?? away?.team?.abbreviation ?? "Away";
+
+      // Determine winner/loser by score (for final games)
+      const isCompleted = status?.completed === true;
+      const winnerScore  = isCompleted ? Math.max(homeScore, awayScore) : homeScore;
+      const loserScore   = isCompleted ? Math.min(homeScore, awayScore) : awayScore;
+      const winnerName   = isCompleted ? (homeScore >= awayScore ? homeName : awayName) : homeName;
+      const loserName    = isCompleted ? (homeScore >= awayScore ? awayName : homeName) : awayName;
+
       return {
         id:        ev.id,
         name:      ev.name,
         roundId,
-        homeTeam:  home?.team?.shortDisplayName ?? home?.team?.abbreviation ?? "Home",
-        homeScore: parseInt(home?.score ?? "0") || 0,
-        awayTeam:  away?.team?.shortDisplayName ?? away?.team?.abbreviation ?? "Away",
-        awayScore: parseInt(away?.score ?? "0") || 0,
+        // Keep original home/away for display during live/scheduled
+        homeTeam:  homeName, homeScore,
+        awayTeam:  awayName, awayScore,
+        // Winner/loser for final display and square calculation
+        winnerTeam: winnerName, winnerScore,
+        loserTeam:  loserName,  loserScore,
         statusName:    status?.name ?? "",
         statusDetail:  status?.shortDetail ?? "",
         isLive:    status?.name === "STATUS_IN_PROGRESS",
-        isFinal:   status?.completed === true,
+        isFinal:   isCompleted,
         isScheduled: status?.name === "STATUS_SCHEDULED",
       };
     });
@@ -515,8 +562,8 @@ async function fetchScores() {
       const rn = state.roundNumbers?.[g.roundId];
       if (!rn?.cols || !rn?.rows) continue;
       if (state.winners?.[g.roundId] != null) continue; // already has winner
-      const col = rn.cols.indexOf(((g.homeScore%10)+10)%10);
-      const row = rn.rows.indexOf(((g.awayScore%10)+10)%10);
+      const col = rn.cols.indexOf(((g.winnerScore%10)+10)%10);
+      const row = rn.rows.indexOf(((g.loserScore%10)+10)%10);
       if (col === -1 || row === -1) continue;
       const idx = row*10+col;
       const sq  = state.squares?.[String(idx)];
@@ -525,8 +572,8 @@ async function fetchScores() {
         [`winners/${g.roundId}`]: idx,
         [`winnerDetails/${g.roundId}`]: {
           squareIdx: idx,
-          homeTeam: g.homeTeam, awayTeam: g.awayTeam,
-          homeScore: g.homeScore, awayScore: g.awayScore,
+          winnerTeam: g.winnerTeam, winnerScore: g.winnerScore,
+          loserTeam:  g.loserTeam,  loserScore:  g.loserScore,
           gameId: g.id,
           recordedAt: Date.now()
         }
@@ -571,7 +618,8 @@ function renderTabs() {
     </button>`;
   }).join("");
   document.getElementById("round-name").textContent = ROUNDS.find(r=>r.id===activeRound).label;
-  document.getElementById("score-title").textContent = `Find Winner · ${ROUNDS.find(r=>r.id===activeRound).short}`;
+  const scoreTitleEl = document.getElementById("score-title");
+  if (scoreTitleEl) scoreTitleEl.textContent = `Find Winner · ${ROUNDS.find(r=>r.id===activeRound).short}`;
 }
 
 function renderNumbers() {
@@ -630,19 +678,35 @@ function renderSquares() {
 }
 
 function renderWinnerBanner() {
+  // Public read-only banner on main page
   const idx    = state.winners?.[activeRound] ?? null;
-  const banner = document.getElementById("winner-banner");
-  const clrBtn = document.getElementById("clear-winner-btn");
+  const banner = document.getElementById("winner-banner-public");
   if (idx != null) {
-    const sq = state.squares?.[String(idx)];
+    const sq  = state.squares?.[String(idx)];
     const det = state.winnerDetails?.[activeRound];
     const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "";
     banner.style.display = "block";
     banner.innerHTML = `🏆 Square #${idx+1} — <strong>${sq?.name ?? "Unclaimed"}</strong>${scoreStr?`<br><span style="font-weight:400;font-size:12px;opacity:.85">${scoreStr}</span>`:""}`;
-    clrBtn.style.display = "inline-block";
   } else {
     banner.style.display = "none";
-    clrBtn.style.display = "none";
+  }
+
+  // Admin banner inside Winners pane (only when authed)
+  if (adminAuthed) {
+    const adminBanner = document.getElementById("winner-banner");
+    const clrBtn      = document.getElementById("clear-winner-btn");
+    if (!adminBanner) return;
+    if (idx != null) {
+      const sq  = state.squares?.[String(idx)];
+      const det = state.winnerDetails?.[activeRound];
+      const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "";
+      adminBanner.style.display = "block";
+      adminBanner.innerHTML = `🏆 Square #${idx+1} — <strong>${sq?.name ?? "Unclaimed"}</strong>${scoreStr?`<br><span style="font-weight:400;font-size:12px;opacity:.85">${scoreStr}</span>`:""}`;
+      clrBtn.style.display = "inline-block";
+    } else {
+      adminBanner.style.display = "none";
+      clrBtn.style.display      = "none";
+    }
   }
 }
 
@@ -685,19 +749,29 @@ function renderScores() {
     const stCls  = g.isLive?"sc-live":g.isFinal?"sc-final":"sc-sched";
     const stLbl  = g.isLive?`🔴 ${g.statusDetail}`:g.isFinal?"✓ Final":g.statusDetail;
     const rn     = state.roundNumbers?.[activeRound];
-    const hd     = rn?.cols ? `<span class="score-team-digit">${((g.homeScore%10)+10)%10}</span>` : "";
-    const ad     = rn?.cols ? `<span class="score-team-digit">${((g.awayScore%10)+10)%10}</span>` : "";
-    const hint   = g.isFinal && rn?.cols ? `<div class="score-card-hint">Click to auto-fill score finder</div>` : "";
-    return `<div class="score-card ${cls}" onclick="fillScoreFinder(${g.homeScore},${g.awayScore})" title="${g.isFinal?'Click to auto-fill finder':''}">
+
+    // Finals: show Winner on top, Loser on bottom. Live/scheduled: Home/Away.
+    const t1Name  = g.isFinal ? g.winnerTeam : g.homeTeam;
+    const t1Score = g.isFinal ? g.winnerScore : g.homeScore;
+    const t1Label = g.isFinal ? "Winner" : "Home";
+    const t2Name  = g.isFinal ? g.loserTeam  : g.awayTeam;
+    const t2Score = g.isFinal ? g.loserScore  : g.awayScore;
+    const t2Label = g.isFinal ? "Loser"  : "Away";
+
+    const d1 = rn?.cols ? `<span class="score-team-digit">${((t1Score%10)+10)%10}</span>` : "";
+    const d2 = rn?.cols ? `<span class="score-team-digit">${((t2Score%10)+10)%10}</span>` : "";
+    const hint      = adminAuthed && g.isFinal && rn?.cols ? `<div class="score-card-hint">Click to preview winning square</div>` : "";
+    const clickAttr = adminAuthed && g.isFinal ? `onclick="fillScoreFinder(${t1Score},${t2Score})" style="cursor:pointer"` : `style="cursor:default"`;
+    return `<div class="score-card ${cls}" ${clickAttr}>
       <div class="score-card-status ${stCls}">${stLbl}</div>
       <div class="score-card-teams">
         <div class="score-team">
-          <span class="score-team-name">${g.homeTeam} <span style="font-size:9px;color:#555">(Home)</span></span>
-          <span class="score-team-score">${g.isFinal||g.isLive?g.homeScore:""}</span>${hd}
+          <span class="score-team-name">${t1Name} <span style="font-size:9px;color:#555">(${t1Label})</span></span>
+          <span class="score-team-score">${g.isFinal||g.isLive?t1Score:""}</span>${d1}
         </div>
         <div class="score-team">
-          <span class="score-team-name">${g.awayTeam} <span style="font-size:9px;color:#555">(Away)</span></span>
-          <span class="score-team-score">${g.isFinal||g.isLive?g.awayScore:""}</span>${ad}
+          <span class="score-team-name">${t2Name} <span style="font-size:9px;color:#555">(${t2Label})</span></span>
+          <span class="score-team-score">${g.isFinal||g.isLive?t2Score:""}</span>${d2}
         </div>
       </div>${hint}
     </div>`;
@@ -719,7 +793,7 @@ function renderWinnersLeaderboard() {
     return;
   }
   list.innerHTML = items.map(({round,idx,sq,det}) => {
-    const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "";
+    const scoreStr = det ? `${det.winnerTeam} ${det.winnerScore} – ${det.loserTeam} ${det.loserScore}` : "";
     return `<div class="winner-card">
       <div class="winner-trophy">🏆</div>
       <div class="winner-info">
@@ -884,42 +958,121 @@ window.confirmUnclaim = async () => {
 };
 
 window.fillScoreFinder = (home, away) => {
+  if (!adminAuthed) return;
   document.getElementById("home-score").value = home;
   document.getElementById("away-score").value = away;
-  document.getElementById("score-section").scrollIntoView({ behavior:"smooth", block:"center" });
+  document.getElementById("admin-round-sel").value = activeRound;
+  document.getElementById("pane-winners").scrollIntoView({ behavior:"smooth", block:"center" });
 };
 
-window.findWinner = async () => {
-  const rn = state.roundNumbers?.[activeRound];
+// findWinner is PREVIEW ONLY — does not save to Firebase
+// Only ESPN auto-detection creates official round winners
+window.findWinner = () => {
+  if (!adminAuthed) return;
+  const roundId = document.getElementById("admin-round-sel").value;
+  const rn = state.roundNumbers?.[roundId];
   if (!rn?.cols) { toast("Draw numbers for this round first!"); return; }
-  const hs = parseInt(document.getElementById("home-score").value);
-  const as = parseInt(document.getElementById("away-score").value);
-  if (isNaN(hs)||isNaN(as)) { toast("Enter valid scores."); return; }
-  const col = rn.cols.indexOf(((hs%10)+10)%10);
-  const row = rn.rows.indexOf(((as%10)+10)%10);
+  const ws = parseInt(document.getElementById("home-score").value);  // winning score
+  const ls = parseInt(document.getElementById("away-score").value);  // losing score
+  if (isNaN(ws)||isNaN(ls)) { toast("Enter valid scores."); return; }
+  const col = rn.cols.indexOf(((ws%10)+10)%10);
+  const row = rn.rows.indexOf(((ls%10)+10)%10);
   const idx = row*10+col;
-  setSaving(true);
-  await update(ref(db, ROOT), {
-    [`winners/${activeRound}`]: idx,
-    [`winnerDetails/${activeRound}`]: {
-      squareIdx: idx, homeScore: hs, awayScore: as,
-      homeTeam: "Home", awayTeam: "Away",
-      recordedAt: Date.now()
-    }
-  });
-  setSaving(false);
-  const sq = state.squares?.[String(idx)];
-  toast(sq ? `🏆 Winner: ${sq.name}!` : `🏆 Square #${idx+1} wins (unclaimed)`);
+  const sq  = state.squares?.[String(idx)];
+  const banner = document.getElementById("winner-banner");
+  banner.style.display = "block";
+  banner.innerHTML = `🔍 Preview: Square #${idx+1} — <strong>${sq?.name ?? "Unclaimed"}</strong><span style="font-weight:400;font-size:11px;opacity:.8;margin-left:8px;">(preview only — not saved)</span>`;
+  // Temporarily scroll active round to this square
+  setRound(roundId);
+  toast(`Preview: Square #${idx+1} — ${sq?.name ?? "Unclaimed"}`);
 };
 
 window.clearWinner = async () => {
-  await remove(ref(db, `${ROOT}/winners/${activeRound}`));
-  await remove(ref(db, `${ROOT}/winnerDetails/${activeRound}`));
+  if (!adminAuthed) return;
+  const roundId = document.getElementById("admin-round-sel")?.value ?? activeRound;
+  await remove(ref(db, `${ROOT}/winners/${roundId}`));
+  await remove(ref(db, `${ROOT}/winnerDetails/${roundId}`));
   document.getElementById("home-score").value = "";
   document.getElementById("away-score").value = "";
 };
 
-window.openAdmin  = () => document.getElementById("admin-modal").classList.add("open");
+window.openViewModal = () => {
+  document.getElementById("view-email").value = "";
+  document.getElementById("view-err").style.display = "none";
+  document.getElementById("view-results").style.display = "none";
+  document.getElementById("view-modal").classList.add("open");
+  setTimeout(() => document.getElementById("view-email").focus(), 60);
+};
+window.closeViewModal = () => document.getElementById("view-modal").classList.remove("open");
+
+window.lookupMySquares = () => {
+  const email = document.getElementById("view-email").value.trim().toLowerCase();
+  if (!email || !/\S+@\S+\.\S+/.test(email)) {
+    const e = document.getElementById("view-err");
+    e.textContent = "Enter a valid email."; e.style.display = "block"; return;
+  }
+  document.getElementById("view-err").style.display = "none";
+
+  // Find all squares for this email
+  const mySquares = [];
+  for (let i=0;i<100;i++) {
+    const sq = state.squares?.[String(i)];
+    if (sq && sq.email.toLowerCase() === email) mySquares.push({ idx:i, ...sq });
+  }
+
+  // Which of their squares are winners
+  const winnerMap = {};
+  for (const r of ROUNDS) {
+    const w = state.winners?.[r.id];
+    if (w != null) winnerMap[w] = r;
+  }
+
+  const resultsEl = document.getElementById("view-results");
+  const contentEl = document.getElementById("view-results-content");
+  resultsEl.style.display = "block";
+
+  if (!mySquares.length) {
+    contentEl.innerHTML = `<p style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:8px;">No squares found for that email.</p>`;
+    return;
+  }
+
+  // Build round-by-round digit table
+  const roundRows = ROUNDS.map(r => {
+    const rn = state.roundNumbers?.[r.id];
+    if (!rn?.cols) return `<tr><td style="color:var(--muted);font-weight:600;">${r.short}</td><td colspan="2" style="color:#555;font-style:italic;">Numbers not drawn yet</td></tr>`;
+    // Show digits for each of the user's squares
+    const digitCells = mySquares.map(sq => {
+      const ri  = Math.floor(sq.idx / 10);
+      const ci  = sq.idx % 10;
+      const win = rn.cols[ci];  // winning digit (col)
+      const los = rn.rows[ri];  // losing digit (row)
+      const isW = winnerMap[sq.idx]?.id === r.id;
+      return `<span style="display:inline-block;margin:2px 4px;padding:3px 8px;border-radius:4px;font-family:monospace;font-size:12px;font-weight:700;background:${isW?'var(--acc)':'#1a2a3a'};color:${isW?'#fff':'var(--claimed)'};">
+        #${sq.idx+1}: W=${win} L=${los}${isW?' 🏆':''}
+      </span>`;
+    }).join("");
+    return `<tr>
+      <td style="color:var(--muted);font-weight:600;font-family:sans-serif;font-size:12px;white-space:nowrap;padding:5px 8px;">${r.short}</td>
+      <td style="padding:5px 8px;">${digitCells}</td>
+    </tr>`;
+  }).join("");
+
+  const squareList = mySquares.map(sq => {
+    const won = winnerMap[sq.idx];
+    return `<span style="display:inline-block;margin:2px;padding:4px 10px;border-radius:5px;font-family:sans-serif;font-size:12px;font-weight:700;background:${won?'var(--acc)':'var(--blue)'};color:${won?'#fff':'var(--claimed)'};">
+      #${sq.idx+1}${won?` 🏆 ${won.short}`:''}
+    </span>`;
+  }).join("");
+
+  contentEl.innerHTML = `
+    <div style="font-family:sans-serif;font-size:13px;font-weight:700;color:#fff;margin-bottom:8px;">
+      ${mySquares[0].name} — ${mySquares.length} square${mySquares.length>1?'s':''}
+    </div>
+    <div style="margin-bottom:14px;">${squareList}</div>
+    <div style="font-family:sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Digits by Round (W = Winning digit, L = Losing digit)</div>
+    <table style="width:100%;border-collapse:collapse;">${roundRows}</table>
+  `;
+};
 window.closeAdmin = () => document.getElementById("admin-modal").classList.remove("open");
 
 window.tryAdminLogin = () => {
@@ -987,7 +1140,7 @@ function setSaving(on) {
   el.textContent=on?"saving…":"● live"; el.classList.toggle("saving",on);
 }
 
-["identity-modal","admin-modal","unclaim-modal"].forEach(id => {
+["identity-modal","admin-modal","unclaim-modal","view-modal"].forEach(id => {
   document.getElementById(id).addEventListener("click", e => {
     if (e.target===e.currentTarget) {
       e.currentTarget.classList.remove("open");
@@ -995,8 +1148,7 @@ function setSaving(on) {
     }
   });
 });
-document.getElementById("home-score").addEventListener("keydown", e=>e.key==="Enter"&&findWinner());
-document.getElementById("away-score").addEventListener("keydown", e=>e.key==="Enter"&&findWinner());
+document.getElementById("view-email").addEventListener("keydown", e=>e.key==="Enter"&&lookupMySquares());
 document.getElementById("f-venmo").addEventListener("keydown",   e=>e.key==="Enter"&&startSession());
 
 render();
