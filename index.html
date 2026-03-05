@@ -73,8 +73,8 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 /* ── Grid ── */
 #grid-wrap  { overflow-x:auto; padding-bottom:12px; }
 #grid-inner { display:inline-block; width:100%; max-width:560px; min-width:300px; }
-.col-hdr    { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:2px; color:#555; text-transform:uppercase; text-align:center; margin-left:36px; margin-bottom:4px; }
-.col-nums   { display:flex; margin-left:36px; margin-bottom:2px; gap:2px; }
+.col-hdr    { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:2px; color:#555; text-transform:uppercase; text-align:center; margin-left:52px; margin-bottom:4px; }
+.col-nums   { display:flex; margin-left:52px; margin-bottom:2px; gap:2px; }
 .num-cell   { flex:1; height:20px; display:flex; align-items:center; justify-content:center; font-family:sans-serif; font-weight:700; font-size:12px; background:#13172a; border-radius:4px; color:#2a2d42; transition:color .3s; min-width:0; }
 .num-cell.drawn { color:var(--acc); }
 #grid-rows  { display:flex; gap:2px; }
@@ -299,21 +299,20 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
       <div class="col-hdr">Winning Team Ones Digit →</div>
       <div class="col-nums" id="col-nums"></div>
       <div id="grid-rows">
-        <div id="row-labels">
-          <div class="row-spacer" style="display:flex;align-items:center;justify-content:flex-end;padding-right:6px;">
-            <span class="row-axis">Losing Team Ones Digit ↑</span>
-          </div>
+        <!-- Axis label spanning full grid height -->
+        <div id="axis-label-col" style="display:flex;align-items:center;justify-content:center;flex-shrink:0;width:14px;margin-right:2px;">
+          <span class="row-axis">Losing Team Ones Digit ↑</span>
         </div>
-        <div>
+        <div id="row-labels">
+          <div class="row-spacer"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;">
           <div class="sq-spacer"></div>
           <div id="sq-grid"></div>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- Current round winner banner (read-only, public) -->
-  <div id="winner-banner-public" style="max-width:600px;margin:16px auto 0;padding:12px 16px;background:var(--acc);border-radius:8px;font-family:sans-serif;font-weight:700;font-size:14px;color:#fff;display:none;text-align:center;"></div>
 
   <!-- Live scores -->
   <div id="scores-section">
@@ -733,18 +732,25 @@ function renderNumbers() {
 }
 
 function renderSquares() {
-  const grid   = document.getElementById("sq-grid");
+  const grid = document.getElementById("sq-grid");
   grid.innerHTML = "";
-  const winner = state.winners?.[activeRound] ?? null;
+
+  // Collect ALL winning square indices for the active round (one per game)
+  const roundWinners = new Set(
+    Object.values(state.winnerDetails ?? {})
+      .filter(d => d && d.roundId === activeRound && d.squareIdx != null)
+      .map(d => d.squareIdx)
+  );
+
   for (let ri=0;ri<10;ri++) {
     const row = document.createElement("div");
     row.className = "sq-row";
     for (let ci=0;ci<10;ci++) {
       const idx    = ri*10+ci;
       const sq     = state.squares?.[String(idx)];
-      const isW    = winner === idx;
+      const isW    = roundWinners.has(idx);
       const isMine = session && sq && sq.email === session.email;
-      const isHot  = !isW && hotSquares.has(idx);  // don't double-highlight the winner square
+      const isHot  = !isW && hotSquares.has(idx);
       const el     = document.createElement("div");
       if (isW) {
         el.className   = "square winner";
@@ -772,20 +778,7 @@ function renderSquares() {
 }
 
 function renderWinnerBanner() {
-  // Public read-only banner on main page
-  const idx    = state.winners?.[activeRound] ?? null;
-  const banner = document.getElementById("winner-banner-public");
-  if (idx != null) {
-    const sq  = state.squares?.[String(idx)];
-    const det = state.winnerDetails?.[activeRound];
-    const scoreStr = det ? `${det.winnerTeam} ${det.winnerScore} – ${det.loserTeam} ${det.loserScore}` : "";
-    banner.style.display = "block";
-    banner.innerHTML = `🏆 Square #${idx+1} — <strong>${sq?.name ?? "Unclaimed"}</strong>${scoreStr?`<br><span style="font-weight:400;font-size:12px;opacity:.85">${scoreStr}</span>`:""}`;
-  } else {
-    banner.style.display = "none";
-  }
-
-  // Admin banner inside Winners pane (only when authed)
+  // Admin-only preview banner inside Winners pane
   if (adminAuthed) {
     const adminBanner = document.getElementById("winner-banner");
     const clrBtn      = document.getElementById("clear-winner-btn");
