@@ -104,6 +104,8 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 .square.mine    { background:#2a1400; border-color:#7c3010; color:var(--acc); cursor:pointer; box-shadow:0 0 8px rgba(249,115,22,.3); }
 .square.mine:hover { border-color:var(--red); }
 .square.winner  { background:var(--acc)!important; border-color:var(--acc2)!important; color:#fff!important; box-shadow:0 0 18px rgba(249,115,22,.6)!important; animation:pop .4s ease; cursor:default; }
+.square.reserved { background:#0e1020!important; border-color:#181828!important; cursor:not-allowed!important; color:#2a2a3a!important; }
+.square.reserved::after { content:'🔒'; font-size:10px; }
 /* Live "currently winning" highlight — updates every score poll */
 .square.hot     { border-color:#f43f5e!important; box-shadow:0 0 12px rgba(244,63,94,.7)!important; animation:hotpulse 1.4s ease-in-out infinite; position:relative; }
 .square.hot.claimed { background:#2a0a14!important; color:#fda4af!important; }
@@ -495,6 +497,24 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
         </p>
         <div id="round-draw-btns"></div>
 
+        <!-- Reserved Squares -->
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
+          <div class="admin-section-title" style="margin-top:0;">Reserved Squares</div>
+          <p style="font-family:sans-serif;font-size:12px;color:var(--muted);margin-bottom:12px;">
+            Set how many squares to hold back for yourself. Public claiming stops once the limit is reached — the remaining squares stay visible and open on the grid, you just claim them yourself to show the randomness is fair.
+          </p>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div>
+              <label>Squares to Reserve</label>
+              <input type="number" id="reserve-input" min="0" max="99" placeholder="0"
+                style="width:70px;padding:9px;font-size:18px;font-weight:700;text-align:center;" />
+            </div>
+            <button class="btn active" onclick="saveSquareLimit()" style="padding:10px 18px;">Save Limit</button>
+            <button class="btn" onclick="clearSquareLimit()" style="padding:10px 14px;">Clear (100)</button>
+          </div>
+          <div id="reserve-status" style="margin-top:10px;font-family:sans-serif;font-size:12px;color:var(--muted);"></div>
+        </div>
+
         <!-- Test injection tool -->
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
           <div class="admin-section-title" style="margin-top:0;color:var(--live);">🧪 Simulate Game Result</div>
@@ -759,7 +779,11 @@ function renderSquares() {
   const grid = document.getElementById("sq-grid");
   grid.innerHTML = "";
 
-  // Collect ALL winning square indices for the active round (one per game)
+  const limit     = state.squareLimit ?? 100;   // max public claims
+  const claimed   = Object.keys(state.squares ?? {}).length;
+  const remaining = limit - claimed;             // how many more public can claim
+
+  // Collect ALL winning square indices for the active round
   const roundWinners = new Set(
     Object.values(state.winnerDetails ?? {})
       .filter(d => d && d.roundId === activeRound && d.squareIdx != null)
@@ -776,6 +800,7 @@ function renderSquares() {
       const isMine = session && sq && sq.email === session.email;
       const isHot  = !isW && hotSquares.has(idx);
       const el     = document.createElement("div");
+
       if (isW) {
         el.className   = "square winner";
         el.textContent = sq ? trunc(sq.name) : "?";
@@ -822,8 +847,10 @@ function renderWinnerBanner() {
 }
 
 function renderStatusBar() {
-  document.getElementById("filled-count").textContent =
-    `${Object.keys(state.squares??{}).length}/100 squares claimed`;
+  const claimed = Object.keys(state.squares??{}).length;
+  const limit   = state.squareLimit ?? 100;
+  const avail   = limit < 100 ? ` of ${limit} available` : "";
+  document.getElementById("filled-count").textContent = `${claimed}/100 squares claimed${avail}`;
 }
 
 function renderSessionBar() {
@@ -950,6 +977,7 @@ function renderAdminContent() {
   renderAdminWinners();
   renderAdminNumbers();
   renderScoreModeBtns();
+  renderSquareLimit();
 }
 
 function renderAdminParticipants() {
@@ -1112,6 +1140,12 @@ window.switchUser = () => { session = null; render(); openIdentityModal(); };
 window.handleSquareClick = async idx => {
   if (!session) { openIdentityModal(); return; }
   if (state.squares?.[String(idx)]) { toast("Just taken — pick another!"); return; }
+  // Enforce public limit (admins bypass)
+  if (!adminAuthed) {
+    const limit   = state.squareLimit ?? 100;
+    const claimed = Object.keys(state.squares ?? {}).length;
+    if (claimed >= limit) { toast("All available squares are claimed!"); return; }
+  }
   setSaving(true);
   try {
     await set(ref(db, `${ROOT}/squares/${idx}`), {
@@ -1330,6 +1364,35 @@ window.runTestInjection = async () => {
       document.getElementById(id).value = "");
   }
 };
+window.saveSquareLimit = async () => {
+  const val = parseInt(document.getElementById("reserve-input").value);
+  if (isNaN(val) || val < 0 || val > 99) { toast("Enter a number between 0 and 99."); return; }
+  const limit = 100 - val;
+  await update(ref(db, ROOT), { squareLimit: limit });
+  toast(`✓ ${val} squares reserved — public limit set to ${limit}.`);
+};
+
+window.clearSquareLimit = async () => {
+  await update(ref(db, ROOT), { squareLimit: 100 });
+  document.getElementById("reserve-input").value = "";
+  toast("Limit cleared — all 100 squares available.");
+};
+
+function renderSquareLimit() {
+  const el = document.getElementById("reserve-input");
+  const st = document.getElementById("reserve-status");
+  if (!el || !st) return;
+  const limit   = state.squareLimit ?? 100;
+  const reserved = 100 - limit;
+  const claimed  = Object.keys(state.squares ?? {}).length;
+  el.value = reserved > 0 ? reserved : "";
+  if (reserved > 0) {
+    const remaining = Math.max(0, limit - claimed);
+    st.innerHTML = `<span style="color:var(--acc);font-weight:700;">${reserved} reserved</span> · public limit ${limit} · ${claimed} claimed · <span style="color:var(--green);">${remaining} still available</span>`;
+  } else {
+    st.textContent = "No limit set — all 100 squares open to the public.";
+  }
+}
 window.openAdmin  = () => document.getElementById("admin-modal").classList.add("open");
 window.closeAdmin = () => document.getElementById("admin-modal").classList.remove("open");
 
@@ -1420,7 +1483,7 @@ window.confirmUnlock = async () => {
 
 window.resetAll = async () => {
   if (!confirm("Reset ALL squares, numbers, and winners? This cannot be undone.")) return;
-  await set(ref(db, ROOT), { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{}, clearedWinners:{}, lockedRounds:{} });
+  await set(ref(db, ROOT), { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{}, clearedWinners:{}, lockedRounds:{}, squareLimit:100 });
   espnGames=[]; seenFinalIds=new Set();
   toast("Board reset.");
 };
