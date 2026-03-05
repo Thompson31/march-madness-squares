@@ -93,6 +93,13 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 .square.mine    { background:#2a1400; border-color:#7c3010; color:var(--acc); cursor:pointer; box-shadow:0 0 8px rgba(249,115,22,.3); }
 .square.mine:hover { border-color:var(--red); }
 .square.winner  { background:var(--acc)!important; border-color:var(--acc2)!important; color:#fff!important; box-shadow:0 0 18px rgba(249,115,22,.6)!important; animation:pop .4s ease; cursor:default; }
+/* Live "currently winning" highlight — updates every score poll */
+.square.hot     { border-color:#f43f5e!important; box-shadow:0 0 12px rgba(244,63,94,.7)!important; animation:hotpulse 1.4s ease-in-out infinite; position:relative; }
+.square.hot.claimed { background:#2a0a14!important; color:#fda4af!important; }
+.square.hot.empty   { background:#1a0810!important; color:#f43f5e!important; }
+.square.hot.mine    { background:#2a0814!important; color:#fda4af!important; }
+/* small "LIVE" pip on hot squares */
+.square.hot::after { content:''; position:absolute; top:3px; right:3px; width:5px; height:5px; background:var(--live); border-radius:50%; animation:pulse 1s infinite; }
 
 /* ── Live scores section ── */
 #scores-section { max-width:600px; margin:24px auto 0; }
@@ -233,6 +240,7 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 @keyframes pop     { 0%{transform:scale(1)} 50%{transform:scale(1.14)} 100%{transform:scale(1)} }
 @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.5} }
 @keyframes fadeIn  { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+@keyframes hotpulse { 0%,100%{box-shadow:0 0 8px rgba(244,63,94,.5)} 50%{box-shadow:0 0 18px rgba(244,63,94,.95)} }
 </style>
 </head>
 <body>
@@ -534,7 +542,8 @@ let adminAuthed = false;
 let adminTab    = "participants";
 let session     = null;
 let unclaimIdx  = null;
-let espnGames   = [];
+let espnGames    = [];
+let hotSquares   = new Set();  // square indices currently "winning" in a live game
 let seenFinalIds = new Set();  // games already processed for auto-winner
 
 // ── Firebase ─────────────────────────────────────────────────────────
@@ -600,6 +609,25 @@ async function fetchScores() {
 
     espnGames = games;
     renderScores();
+
+    // ── Compute live "hot" squares ────────────────────────────────────
+    const newHot = new Set();
+    for (const g of games) {
+      if (!g.isLive) continue;
+      const rn = state.roundNumbers?.[g.roundId];
+      if (!rn?.cols || !rn?.rows) continue;
+      // For live games use leading score as "winning" digit, trailing as "losing"
+      const highScore = Math.max(g.homeScore, g.awayScore);
+      const lowScore  = Math.min(g.homeScore, g.awayScore);
+      const col = rn.cols.indexOf(((highScore%10)+10)%10);
+      const row = rn.rows.indexOf(((lowScore%10)+10)%10);
+      if (col !== -1 && row !== -1) newHot.add(row*10+col);
+    }
+    // Only re-render grid if hot squares actually changed
+    const hotChanged = newHot.size !== hotSquares.size ||
+      [...newHot].some(i => !hotSquares.has(i));
+    hotSquares = newHot;
+    if (hotChanged) renderSquares();
 
     // Auto-winner detection for newly finished games
     for (const g of games) {
@@ -698,24 +726,25 @@ function renderSquares() {
       const sq     = state.squares?.[String(idx)];
       const isW    = winner === idx;
       const isMine = session && sq && sq.email === session.email;
+      const isHot  = !isW && hotSquares.has(idx);  // don't double-highlight the winner square
       const el     = document.createElement("div");
       if (isW) {
         el.className   = "square winner";
         el.textContent = sq ? trunc(sq.name) : "?";
         el.title       = sq?.name ?? "unclaimed winner";
       } else if (isMine) {
-        el.className   = "square mine";
+        el.className   = `square mine${isHot?" hot":""}`;
         el.textContent = trunc(sq.name);
-        el.title       = "Your square — tap to release";
+        el.title       = isHot ? "🔴 Currently winning! — tap to release" : "Your square — tap to release";
         el.onclick     = () => openUnclaimModal(idx);
       } else if (sq) {
-        el.className   = "square claimed";
+        el.className   = `square claimed${isHot?" hot":""}`;
         el.textContent = trunc(sq.name);
-        el.title       = sq.name;
+        el.title       = isHot ? `🔴 ${sq.name} — currently winning!` : sq.name;
       } else {
-        el.className   = "square empty";
+        el.className   = `square empty${isHot?" hot":""}`;
         el.textContent = "+";
-        el.title       = `Claim square #${idx+1}`;
+        el.title       = isHot ? "🔴 This square is currently winning!" : `Claim square #${idx+1}`;
         el.onclick     = () => handleSquareClick(idx);
       }
       row.appendChild(el);
