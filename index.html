@@ -589,6 +589,12 @@ async function fetchScores() {
       const winnerName   = isCompleted ? (homeScore >= awayScore ? homeName : awayName) : homeName;
       const loserName    = isCompleted ? (homeScore >= awayScore ? awayName : homeName) : awayName;
 
+      const LIVE_STATUSES = new Set([
+        "STATUS_IN_PROGRESS",
+        "STATUS_HALFTIME",
+        "STATUS_END_PERIOD",
+        "STATUS_OVERTIME",
+      ]);
       return {
         id:        ev.id,
         name:      ev.name,
@@ -601,7 +607,7 @@ async function fetchScores() {
         loserTeam:  loserName,  loserScore,
         statusName:    status?.name ?? "",
         statusDetail:  status?.shortDetail ?? "",
-        isLive:    status?.name === "STATUS_IN_PROGRESS",
+        isLive:    LIVE_STATUSES.has(status?.name ?? ""),
         isFinal:   isCompleted,
         isScheduled: status?.name === "STATUS_SCHEDULED",
       };
@@ -823,7 +829,9 @@ function renderScores() {
   grid.innerHTML = sorted.map(g => {
     const cls    = g.isLive?"live":g.isFinal?"final":"sched";
     const stCls  = g.isLive?"sc-live":g.isFinal?"sc-final":"sc-sched";
-    const stLbl  = g.isLive?`🔴 ${g.statusDetail}`:g.isFinal?"✓ Final":g.statusDetail;
+    const stLbl  = g.isLive
+      ? (g.statusName === "STATUS_HALFTIME" ? "⏸ Halftime" : `🔴 ${g.statusDetail}`)
+      : g.isFinal ? "✓ Final" : g.statusDetail;
     const rn     = state.roundNumbers?.[activeRound];
 
     // Finals: show Winner on top, Loser on bottom. Live/scheduled: Home/Away.
