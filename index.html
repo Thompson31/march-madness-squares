@@ -912,11 +912,13 @@ function renderAdminParticipants() {
     if (!people[sq.email]) people[sq.email] = { name:sq.name, email:sq.email, venmo:sq.venmo, squares:[] };
     people[sq.email].squares.push(i);
   }
-  // Which squares are winners
-  const winnerSquares = {};
-  for (const r of ROUNDS) {
-    const idx = state.winners?.[r.id];
-    if (idx != null) winnerSquares[idx] = r.short;
+  // Build a map of squareIdx → array of round shorts won (per-game, multiple wins possible)
+  const winsBySquare = {};
+  for (const det of Object.values(state.winnerDetails ?? {})) {
+    if (det?.squareIdx == null) continue;
+    const round = ROUNDS.find(r => r.id === det.roundId);
+    if (!winsBySquare[det.squareIdx]) winsBySquare[det.squareIdx] = [];
+    winsBySquare[det.squareIdx].push(round?.short ?? det.roundId);
   }
   const rows = Object.values(people);
   if (!rows.length) {
@@ -924,14 +926,17 @@ function renderAdminParticipants() {
     return;
   }
   tbody.innerHTML = rows.map((p,i) => {
-    const wons = p.squares.filter(s => winnerSquares[s]).map(s => `<span class="win-badge">${winnerSquares[s]}</span>`).join("");
+    // Collect all wins across all this person's squares
+    const allWins = p.squares.flatMap(s => winsBySquare[s] ?? []);
+    const wons = allWins.map(short => `<span class="win-badge">${short}</span>`).join("");
+    const winCount = allWins.length;
     return `<tr>
       <td>${i+1}</td>
       <td style="color:var(--txt);font-weight:600;">${p.name}</td>
       <td style="color:#93c5fd;">${p.email}</td>
       <td style="color:var(--green);"><a href="https://venmo.com/${p.venmo}" target="_blank" class="venmo-link">@${p.venmo}</a></td>
       <td style="color:var(--muted);">${p.squares.length}</td>
-      <td>${wons || '<span style="color:#555">—</span>'}</td>
+      <td>${wons || '<span style="color:#555">—</span>'}${winCount>1?`<span style="font-family:sans-serif;font-size:10px;color:var(--acc);margin-left:4px;">(${winCount})</span>`:""}</td>
       <td><button onclick="adminUnclaimAll('${p.email}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;font-family:sans-serif;">Remove</button></td>
     </tr>`;
   }).join("");
