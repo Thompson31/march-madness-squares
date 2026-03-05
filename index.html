@@ -495,6 +495,30 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
         </p>
         <div id="round-draw-btns"></div>
 
+        <!-- Test injection tool -->
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
+          <div class="admin-section-title" style="margin-top:0;color:var(--live);">🧪 Simulate Game Result</div>
+          <p style="font-family:sans-serif;font-size:12px;color:var(--muted);margin-bottom:12px;">
+            Inject a fake final score to test the full winner flow — splash, orange square, leaderboard, admin payout. Useful for stress testing before the tournament.
+          </p>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px;">
+            <div>
+              <label>Round</label>
+              <select id="test-round" style="width:auto;padding:8px 10px;background:var(--bg);border:1px solid var(--bdr2);border-radius:6px;color:#fff;font-family:sans-serif;font-size:13px;">
+                <option value="r64">R64</option><option value="r32">R32</option>
+                <option value="s16">S16</option><option value="e8">E8</option>
+                <option value="ff">FF</option><option value="ch">CH</option>
+              </select>
+            </div>
+            <div><label>Winner Team</label><input type="text" id="test-wteam" placeholder="Team A" style="width:90px;padding:8px;font-size:13px;" /></div>
+            <div><label>Win Score</label><input type="number" id="test-wscore" placeholder="78" style="width:60px;padding:8px;font-size:16px;font-weight:700;text-align:center;" /></div>
+            <div><label>Loser Team</label><input type="text" id="test-lteam" placeholder="Team B" style="width:90px;padding:8px;font-size:13px;" /></div>
+            <div><label>Loss Score</label><input type="number" id="test-lscore" placeholder="65" style="width:60px;padding:8px;font-size:16px;font-weight:700;text-align:center;" /></div>
+            <button class="btn" onclick="runTestInjection()" style="background:#1a0a00;color:var(--live);border:1px solid #7f1d1d;font-weight:700;">Inject →</button>
+          </div>
+          <p id="test-result" style="font-family:sans-serif;font-size:12px;color:var(--green);display:none;margin-top:6px;"></p>
+        </div>
+
         <!-- Score feed mode toggle -->
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
           <div class="admin-section-title" style="margin-top:0;">Score Feed Mode</div>
@@ -849,7 +873,33 @@ function renderScores() {
 
     const d1 = rn?.cols ? `<span class="score-team-digit">${((t1Score%10)+10)%10}</span>` : "";
     const d2 = rn?.cols ? `<span class="score-team-digit">${((t2Score%10)+10)%10}</span>` : "";
-    const hint      = adminAuthed && g.isFinal && rn?.cols ? `<div class="score-card-hint">Click to preview winning square</div>` : "";
+
+    // Look up if this game has a recorded winner
+    let winnerFooter = "";
+    if (g.isFinal && rn?.cols) {
+      const det = Object.values(state.winnerDetails ?? {}).find(d => d?.gameId === g.id);
+      if (det) {
+        const sq = state.squares?.[String(det.squareIdx)];
+        const name = sq?.name ?? "Unclaimed";
+        winnerFooter = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e2340;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:13px;">🏆</span>
+          <span style="font-family:sans-serif;font-size:12px;font-weight:700;color:var(--acc);">${name}</span>
+          <span style="font-family:sans-serif;font-size:10px;color:#555;">· Sq #${det.squareIdx+1}</span>
+        </div>`;
+      } else if (rn?.cols) {
+        // Numbers drawn but no winner yet — show which square would win
+        const col = rn.cols.indexOf(((t1Score%10)+10)%10);
+        const row = rn.rows.indexOf(((t2Score%10)+10)%10);
+        if (col !== -1 && row !== -1) {
+          const idx = row*10+col;
+          const sq  = state.squares?.[String(idx)];
+          winnerFooter = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e2340;font-family:sans-serif;font-size:11px;color:#555;">
+            Sq #${idx+1} — ${sq?.name ?? "Unclaimed"}${adminAuthed ? ` <button onclick="injectWinner('${g.id}','${g.roundId}',${t1Score},${t2Score},'${(g.winnerTeam||'').replace(/'/g,"\\'")}','${(g.loserTeam||'').replace(/'/g,"\\'")}','${(g.name||'').replace(/'/g,"\\'")}'); event.stopPropagation();" style="margin-left:6px;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:10px;padding:2px 7px;cursor:pointer;font-weight:700;">Set Winner</button>` : ""}
+          </div>`;
+        }
+      }
+    }
+
     const clickAttr = adminAuthed && g.isFinal ? `onclick="fillScoreFinder(${t1Score},${t2Score})" style="cursor:pointer"` : `style="cursor:default"`;
     return `<div class="score-card ${cls}" ${clickAttr}>
       <div class="score-card-status ${stCls}">${stLbl}</div>
@@ -862,7 +912,7 @@ function renderScores() {
           <span class="score-team-name">${t2Name} <span style="font-size:9px;color:#555">(${t2Label})</span></span>
           <span class="score-team-score">${g.isFinal||g.isLive?t2Score:""}</span>${d2}
         </div>
-      </div>${hint}
+      </div>${winnerFooter}
     </div>`;
   }).join("");
 }
@@ -1151,11 +1201,14 @@ window.lookupMySquares = () => {
     if (sq && sq.email.toLowerCase() === email) mySquares.push({ idx:i, ...sq });
   }
 
-  // Which of their squares are winners
+  // Which of their squares are winners — build from winnerDetails (per-game)
+  // winnerMap[squareIdx] = array of round shorts won
   const winnerMap = {};
-  for (const r of ROUNDS) {
-    const w = state.winners?.[r.id];
-    if (w != null) winnerMap[w] = r;
+  for (const det of Object.values(state.winnerDetails ?? {})) {
+    if (det?.squareIdx == null) continue;
+    const round = ROUNDS.find(r => r.id === det.roundId);
+    if (!winnerMap[det.squareIdx]) winnerMap[det.squareIdx] = [];
+    winnerMap[det.squareIdx].push(round?.short ?? det.roundId);
   }
 
   const resultsEl = document.getElementById("view-results");
@@ -1171,15 +1224,16 @@ window.lookupMySquares = () => {
   const roundRows = ROUNDS.map(r => {
     const rn = state.roundNumbers?.[r.id];
     if (!rn?.cols) return `<tr><td style="color:var(--muted);font-weight:600;">${r.short}</td><td colspan="2" style="color:#555;font-style:italic;">Numbers not drawn yet</td></tr>`;
-    // Show digits for each of the user's squares
     const digitCells = mySquares.map(sq => {
       const ri  = Math.floor(sq.idx / 10);
       const ci  = sq.idx % 10;
-      const win = rn.cols[ci];  // winning digit (col)
-      const los = rn.rows[ri];  // losing digit (row)
-      const isW = winnerMap[sq.idx]?.id === r.id;
+      const win = rn.cols[ci];
+      const los = rn.rows[ri];
+      const wins = winnerMap[sq.idx] ?? [];
+      const isW = wins.includes(r.short);
+      const winCount = wins.filter(s => s === r.short).length;
       return `<span style="display:inline-block;margin:2px 4px;padding:3px 8px;border-radius:4px;font-family:monospace;font-size:12px;font-weight:700;background:${isW?'var(--acc)':'#1a2a3a'};color:${isW?'#fff':'var(--claimed)'};">
-        #${sq.idx+1}: W=${win} L=${los}${isW?' 🏆':''}
+        #${sq.idx+1}: W=${win} L=${los}${isW?` 🏆${winCount>1?` ×${winCount}`:''}` :''}
       </span>`;
     }).join("");
     return `<tr>
@@ -1189,9 +1243,10 @@ window.lookupMySquares = () => {
   }).join("");
 
   const squareList = mySquares.map(sq => {
-    const won = winnerMap[sq.idx];
-    return `<span style="display:inline-block;margin:2px;padding:4px 10px;border-radius:5px;font-family:sans-serif;font-size:12px;font-weight:700;background:${won?'var(--acc)':'var(--blue)'};color:${won?'#fff':'var(--claimed)'};">
-      #${sq.idx+1}${won?` 🏆 ${won.short}`:''}
+    const wins = winnerMap[sq.idx] ?? [];
+    const badges = wins.map(s => `🏆 ${s}`).join(" ");
+    return `<span style="display:inline-block;margin:2px;padding:4px 10px;border-radius:5px;font-family:sans-serif;font-size:12px;font-weight:700;background:${wins.length?'var(--acc)':'var(--blue)'};color:${wins.length?'#fff':'var(--claimed)'};">
+      #${sq.idx+1}${wins.length ? ` ${badges}` : ''}
     </span>`;
   }).join("");
 
@@ -1222,6 +1277,59 @@ function renderScoreModeBtns() {
   tBtn.classList.toggle("active", mode === "tournament");
   lbl.textContent = mode === "tournament" ? "Filtering to NCAA Tournament games only" : "Showing all D1 games";
 }
+// Shared winner injection logic — used by both test tool and score card Set Winner button
+window.injectWinner = async (gameId, roundId, winScore, losScore, winTeam, losTeam, gameName) => {
+  const rn = state.roundNumbers?.[roundId];
+  if (!rn?.cols || !rn?.rows) { toast("Draw numbers for that round first!"); return; }
+  const col = rn.cols.indexOf(((winScore%10)+10)%10);
+  const row = rn.rows.indexOf(((losScore%10)+10)%10);
+  if (col === -1 || row === -1) { toast("Digit not found in drawn numbers."); return; }
+  const idx = row*10+col;
+  const sq  = state.squares?.[String(idx)];
+  setSaving(true);
+  await update(ref(db, ROOT), {
+    [`winners/${gameId}`]: idx,
+    [`winnerDetails/${gameId}`]: {
+      squareIdx: idx, roundId,
+      winnerTeam: winTeam, winnerScore: winScore,
+      loserTeam:  losTeam, loserScore:  losScore,
+      gameId, gameName: gameName || `${winTeam} vs ${losTeam}`,
+      recordedAt: Date.now()
+    }
+  });
+  setSaving(false);
+  const round = ROUNDS.find(r => r.id === roundId);
+  showWinnerSplash(roundId, idx, sq, {
+    winnerTeam: winTeam, winnerScore: winScore,
+    loserTeam: losTeam, loserScore: losScore, name: gameName
+  });
+  toast(`🏆 Injected! Square #${idx+1} — ${sq?.name ?? "Unclaimed"}`);
+  return { idx, sq };
+};
+
+window.runTestInjection = async () => {
+  const roundId  = document.getElementById("test-round").value;
+  const winTeam  = document.getElementById("test-wteam").value.trim() || "Team A";
+  const winScore = parseInt(document.getElementById("test-wscore").value);
+  const losTeam  = document.getElementById("test-lteam").value.trim() || "Team B";
+  const losScore = parseInt(document.getElementById("test-lscore").value);
+  const resultEl = document.getElementById("test-result");
+
+  if (isNaN(winScore) || isNaN(losScore)) { toast("Enter both scores."); return; }
+  if (winScore < losScore) { toast("Win score must be ≥ Loss score."); return; }
+
+  const fakeId = `test-${Date.now()}`;
+  const result = await injectWinner(fakeId, roundId, winScore, losScore, winTeam, losTeam,
+    `${winTeam} vs ${losTeam} (TEST)`);
+  if (result) {
+    resultEl.style.display = "block";
+    resultEl.textContent =
+      `✓ Injected: Square #${result.idx+1} — ${result.sq?.name ?? "Unclaimed"} · ${winTeam} ${winScore}–${losTeam} ${losScore}`;
+    // Clear fields for next test
+    ["test-wscore","test-lscore","test-wteam","test-lteam"].forEach(id =>
+      document.getElementById(id).value = "");
+  }
+};
 window.openAdmin  = () => document.getElementById("admin-modal").classList.add("open");
 window.closeAdmin = () => document.getElementById("admin-modal").classList.remove("open");
 
