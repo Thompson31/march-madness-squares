@@ -72,21 +72,32 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 
 /* ── Grid ── */
 #grid-wrap  { overflow-x:auto; padding-bottom:12px; }
-#grid-inner { display:inline-block; min-width:440px; }
-.col-hdr    { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:2px; color:#555; text-transform:uppercase; text-align:center; margin-left:82px; margin-bottom:4px; }
-.col-nums   { display:flex; margin-left:82px; margin-bottom:2px; gap:2px; }
-.num-cell   { width:46px; height:22px; display:flex; align-items:center; justify-content:center; font-family:sans-serif; font-weight:700; font-size:13px; background:#13172a; border-radius:4px; color:#2a2d42; transition:color .3s; }
+#grid-inner { display:inline-block; width:100%; max-width:560px; min-width:300px; }
+.col-hdr    { font-family:sans-serif; font-size:10px; font-weight:700; letter-spacing:2px; color:#555; text-transform:uppercase; text-align:center; margin-left:36px; margin-bottom:4px; }
+.col-nums   { display:flex; margin-left:36px; margin-bottom:2px; gap:2px; }
+.num-cell   { flex:1; height:20px; display:flex; align-items:center; justify-content:center; font-family:sans-serif; font-weight:700; font-size:12px; background:#13172a; border-radius:4px; color:#2a2d42; transition:color .3s; min-width:0; }
 .num-cell.drawn { color:var(--acc); }
 #grid-rows  { display:flex; gap:2px; }
-#row-labels { display:flex; flex-direction:column; gap:2px; }
-.row-spacer { height:46px; width:80px; }
-.row-lbl    { width:80px; height:46px; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; font-family:sans-serif; font-weight:700; font-size:13px; color:#2a2d42; transition:color .3s; }
+#row-labels { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
+.row-spacer { height:calc(4vw + 18px); max-height:46px; min-height:28px; width:36px; display:flex; align-items:center; justify-content:center; }
+.row-lbl    { width:36px; height:calc(4vw + 18px); max-height:46px; min-height:28px; display:flex; align-items:center; justify-content:center; font-family:sans-serif; font-weight:700; font-size:12px; color:#2a2d42; transition:color .3s; }
 .row-lbl.drawn { color:var(--acc); }
-.row-axis   { font-family:sans-serif; font-size:9px; color:#555; text-transform:uppercase; letter-spacing:1px; writing-mode:vertical-rl; transform:rotate(180deg); line-height:1.2; }
-#sq-grid    { display:flex; flex-direction:column; gap:2px; }
+.row-axis   { font-family:sans-serif; font-size:8px; color:#555; text-transform:uppercase; letter-spacing:.5px; writing-mode:vertical-rl; transform:rotate(180deg); line-height:1; text-align:center; }
+#sq-grid    { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
 .sq-row     { display:flex; gap:2px; }
-.sq-spacer  { height:46px; }
-.square     { width:46px; height:46px; border-radius:5px; cursor:pointer; display:flex; align-items:center; justify-content:center; overflow:hidden; transition:border-color .12s,background .15s,box-shadow .2s,transform .1s; font-size:9px; font-family:sans-serif; font-weight:700; color:var(--claimed); text-align:center; padding:2px 3px; line-height:1.2; word-break:break-word; background:#10142a; border:1px solid var(--bdr); }
+.sq-spacer  { height:calc(4vw + 18px); max-height:46px; min-height:28px; }
+/* Squares scale with screen width */
+.square     {
+  flex:1; min-width:0;
+  height:calc(4vw + 18px); max-height:46px; min-height:28px;
+  border-radius:4px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden; transition:border-color .12s,background .15s,box-shadow .2s,transform .1s;
+  font-size:clamp(7px,1.4vw,9px); font-family:sans-serif; font-weight:700;
+  color:var(--claimed); text-align:center; padding:1px 2px;
+  line-height:1.2; word-break:break-word;
+  background:#10142a; border:1px solid var(--bdr);
+}
 .square.empty   { color:#1e2340; font-size:18px; }
 .square.empty:hover { border-color:var(--acc); background:#13172a; transform:scale(1.06); }
 .square.claimed { background:var(--blue); border-color:var(--blue-b); cursor:default; }
@@ -635,31 +646,32 @@ async function fetchScores() {
     hotSquares = newHot;
     if (hotChanged) renderSquares();
 
-    // Auto-winner detection for newly finished games
+    // ── Auto-winner detection for newly finished games ────────────────
     for (const g of games) {
       if (!g.isFinal || seenFinalIds.has(g.id)) continue;
       seenFinalIds.add(g.id);
       const rn = state.roundNumbers?.[g.roundId];
       if (!rn?.cols || !rn?.rows) continue;
-      if (state.winners?.[g.roundId] != null) continue;       // already has winner
       if (state.clearedWinners?.[g.roundId]) continue;        // manually cleared — skip
+      // Use game ID as key so every game gets its own winner entry
+      if (state.winners?.[g.id] != null) continue;            // already recorded for this game
       const col = rn.cols.indexOf(((g.winnerScore%10)+10)%10);
       const row = rn.rows.indexOf(((g.loserScore%10)+10)%10);
       if (col === -1 || row === -1) continue;
       const idx = row*10+col;
       const sq  = state.squares?.[String(idx)];
-      // Save to Firebase
       await update(ref(db, ROOT), {
-        [`winners/${g.roundId}`]: idx,
-        [`winnerDetails/${g.roundId}`]: {
-          squareIdx: idx,
-          winnerTeam: g.winnerTeam, winnerScore: g.winnerScore,
-          loserTeam:  g.loserTeam,  loserScore:  g.loserScore,
-          gameId: g.id,
-          recordedAt: Date.now()
+        [`winners/${g.id}`]: idx,
+        [`winnerDetails/${g.id}`]: {
+          squareIdx:   idx,
+          roundId:     g.roundId,
+          winnerTeam:  g.winnerTeam, winnerScore: g.winnerScore,
+          loserTeam:   g.loserTeam,  loserScore:  g.loserScore,
+          gameId:      g.id,
+          gameName:    g.name,
+          recordedAt:  Date.now()
         }
       });
-      // Show splash if page is visible
       showWinnerSplash(g.roundId, idx, sq, g);
     }
 
@@ -766,7 +778,7 @@ function renderWinnerBanner() {
   if (idx != null) {
     const sq  = state.squares?.[String(idx)];
     const det = state.winnerDetails?.[activeRound];
-    const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "";
+    const scoreStr = det ? `${det.winnerTeam} ${det.winnerScore} – ${det.loserTeam} ${det.loserScore}` : "";
     banner.style.display = "block";
     banner.innerHTML = `🏆 Square #${idx+1} — <strong>${sq?.name ?? "Unclaimed"}</strong>${scoreStr?`<br><span style="font-weight:400;font-size:12px;opacity:.85">${scoreStr}</span>`:""}`;
   } else {
@@ -864,27 +876,28 @@ function renderScores() {
 
 function renderWinnersLeaderboard() {
   const list = document.getElementById("winners-list");
-  const items = ROUNDS.map(r => {
-    const idx = state.winners?.[r.id] ?? null;
-    if (idx == null) return null;
-    const sq  = state.squares?.[String(idx)];
-    const det = state.winnerDetails?.[r.id];
-    return { round:r, idx, sq, det };
-  }).filter(Boolean);
+  const details = state.winnerDetails ?? {};
+  // Collect all game winner entries, sorted newest first
+  const items = Object.values(details)
+    .filter(d => d && d.squareIdx != null)
+    .sort((a,b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0));
 
   if (!items.length) {
-    list.innerHTML = `<div id="winners-empty" style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:20px;">No winners yet — they'll appear here automatically when games finish.</div>`;
+    list.innerHTML = `<div style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:20px;">No winners yet — they'll appear here automatically when games finish.</div>`;
     return;
   }
-  list.innerHTML = items.map(({round,idx,sq,det}) => {
-    const scoreStr = det ? `${det.winnerTeam} ${det.winnerScore} – ${det.loserTeam} ${det.loserScore}` : "";
+  list.innerHTML = items.map(det => {
+    const sq    = state.squares?.[String(det.squareIdx)];
+    const round = ROUNDS.find(r => r.id === det.roundId);
+    const scoreStr = det.winnerTeam ? `${det.winnerTeam} ${det.winnerScore} – ${det.loserTeam} ${det.loserScore}` : "";
+    const gameName = det.gameName ? `<span style="color:#555;font-size:10px;"> · ${det.gameName}</span>` : "";
     return `<div class="winner-card">
       <div class="winner-trophy">🏆</div>
       <div class="winner-info">
-        <div class="winner-name">${sq?.name ?? `Square #${idx+1} (Unclaimed)`}</div>
-        <div class="winner-meta">Square #${idx+1}${scoreStr?` · ${scoreStr}`:""}</div>
+        <div class="winner-name">${sq?.name ?? `Square #${det.squareIdx+1} (Unclaimed)`}</div>
+        <div class="winner-meta">Square #${det.squareIdx+1}${scoreStr ? ` · ${scoreStr}` : ""}${gameName}</div>
       </div>
-      <div class="winner-round">${round.short}</div>
+      <div class="winner-round">${round?.short ?? "–"}</div>
     </div>`;
   }).join("");
 }
@@ -933,31 +946,30 @@ function renderAdminParticipants() {
 
 function renderAdminWinners() {
   const container = document.getElementById("admin-winners-list");
-  const items = ROUNDS.map(r => {
-    const idx = state.winners?.[r.id] ?? null;
-    if (idx == null) return null;
-    const sq  = state.squares?.[String(idx)];
-    const det = state.winnerDetails?.[r.id];
-    return { round:r, idx, sq, det };
-  }).filter(Boolean);
+  const details = state.winnerDetails ?? {};
+  const items = Object.values(details)
+    .filter(d => d && d.squareIdx != null)
+    .sort((a,b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0));
 
   if (!items.length) {
     container.innerHTML = `<p style="font-family:sans-serif;font-size:13px;color:#555;text-align:center;padding:20px;">No winners recorded yet.</p>`;
     return;
   }
-  container.innerHTML = items.map(({round,idx,sq,det}) => {
-    const scoreStr = det ? `${det.awayTeam} ${det.awayScore} – ${det.homeTeam} ${det.homeScore}` : "Score not recorded";
+  container.innerHTML = items.map(det => {
+    const sq      = state.squares?.[String(det.squareIdx)];
+    const round   = ROUNDS.find(r => r.id === det.roundId);
+    const scoreStr = det.winnerTeam ? `${det.winnerTeam} ${det.winnerScore} – ${det.loserTeam} ${det.loserScore}` : "Score not recorded";
     const venmoLink = sq?.venmo ? `<a href="https://venmo.com/${sq.venmo}" target="_blank" class="venmo-link">Pay @${sq.venmo} on Venmo →</a>` : "";
     return `<div class="w-admin-card">
-      <div class="w-admin-round">${round.label}</div>
-      <div class="w-admin-name">${sq?.name ?? `Square #${idx+1} (Unclaimed)`}</div>
+      <div class="w-admin-round">${round?.label ?? det.roundId}${det.gameName ? ` · ${det.gameName}` : ""}</div>
+      <div class="w-admin-name">${sq?.name ?? `Square #${det.squareIdx+1} (Unclaimed)`}</div>
       <div class="w-admin-meta">
-        Square #${idx+1} · ${scoreStr}<br>
+        Square #${det.squareIdx+1} · ${scoreStr}<br>
         ${sq?.email ? `📧 ${sq.email}<br>` : ""}
         ${venmoLink}
       </div>
       <div style="margin-top:8px;">
-        <button onclick="adminClearWinner('${round.id}')" class="btn btn-sm" style="font-size:10px;color:var(--red);background:none;border:1px solid #3a1010;padding:3px 10px;">Clear Winner</button>
+        <button onclick="adminClearWinner('${det.gameId}')" class="btn btn-sm" style="font-size:10px;color:var(--red);background:none;border:1px solid #3a1010;padding:3px 10px;">Clear</button>
       </div>
     </div>`;
   }).join("");
@@ -1245,12 +1257,10 @@ window.adminUnclaimAll = async email => {
   toast("Squares removed.");
 };
 
-window.adminClearWinner = async roundId => {
-  // Store a "manually cleared" flag so ESPN auto-detection won't re-add this round
+window.adminClearWinner = async gameId => {
   await update(ref(db, ROOT), {
-    [`winners/${roundId}`]: null,
-    [`winnerDetails/${roundId}`]: null,
-    [`clearedWinners/${roundId}`]: true,
+    [`winners/${gameId}`]:       null,
+    [`winnerDetails/${gameId}`]: null,
   });
   toast("Winner cleared.");
 };
