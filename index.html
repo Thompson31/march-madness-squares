@@ -415,6 +415,20 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
   </div>
 </div>
 
+<!-- Unlock squares modal -->
+<div class="modal-overlay" id="unlock-squares-modal" style="z-index:400;">
+  <div class="modal" style="border-color:var(--green);max-width:320px;">
+    <h3 style="color:var(--green);">🔓 Unlock Squares?</h3>
+    <p class="sub">Enter admin password to allow square releases again.</p>
+    <div class="field"><label>Admin Password</label><input type="password" id="unlock-sq-pw" placeholder="Enter password…" onkeydown="if(event.key==='Enter')confirmUnlockSquares()" /></div>
+    <p class="form-error" id="unlock-sq-err"></p>
+    <div class="modal-btns">
+      <button class="btn-primary" style="background:var(--green);color:#071a07;flex:1;" onclick="confirmUnlockSquares()">Unlock</button>
+      <button class="btn-ghost" onclick="document.getElementById('unlock-squares-modal').classList.remove('open')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Unlock round modal -->
 <div class="modal-overlay" id="unlock-modal" style="z-index:400;">
   <div class="modal" style="border-color:var(--green);max-width:320px;">
@@ -496,6 +510,19 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
           Draw numbers for each round, then lock them so they can't be changed accidentally. Unlocking requires the admin password.
         </p>
         <div id="round-draw-btns"></div>
+
+        <!-- Lock Squares -->
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
+          <div class="admin-section-title" style="margin-top:0;">Lock Squares</div>
+          <p style="font-family:sans-serif;font-size:12px;color:var(--muted);margin-bottom:12px;">
+            Once the tournament starts, lock all squares so nobody can accidentally release their picks. Unlocking requires the admin password.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button id="lock-squares-btn" class="btn" onclick="lockAllSquares()" style="background:#0a2a0a;color:var(--green);border:1px solid #1a4a1a;font-weight:700;">🔒 Lock All Squares</button>
+            <button id="unlock-squares-btn" class="btn" onclick="openUnlockSquaresModal()" style="color:var(--muted);font-size:11px;">Unlock</button>
+            <span id="squares-lock-label" style="font-family:sans-serif;font-size:11px;color:var(--muted);margin-left:4px;"></span>
+          </div>
+        </div>
 
         <!-- Reserved Squares -->
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--bdr2);">
@@ -609,7 +636,8 @@ onValue(ref(db, ROOT), snap => {
 
 // ── ESPN score polling ────────────────────────────────────────────────
 function espnUrl() {
-  const mode = state.scoreMode ?? "regular";
+  const mode = state.scoreMode ?? "tournament";
+  // groups=100 = NCAA DI Men's Tournament only (filters out NIT, CBI, CIT, etc.)
   return mode === "tournament"
     ? "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?limit=100&groups=100"
     : "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?limit=100";
@@ -627,7 +655,9 @@ async function fetchScores() {
       const home   = comp.competitors?.find(c => c.homeAway === "home");
       const away   = comp.competitors?.find(c => c.homeAway === "away");
       const status = ev.status?.type;
-      const noteText = (comp.notes?.[0]?.headline ?? "").toLowerCase();
+      const noteText  = (comp.notes?.[0]?.headline ?? "").toLowerCase();
+      // First Four games are excluded from winner detection — pool starts with R64 (March 19)
+      const isFirstFour = noteText.includes("first four") || noteText.includes("first 4");
       // Try to match a tournament round from the game note; fall back to "r64" for regular season testing
       const roundId  = ROUNDS.find(r => r.espnWords.some(w => noteText.includes(w)))?.id ?? "r64";
 
@@ -653,6 +683,7 @@ async function fetchScores() {
         id:        ev.id,
         name:      ev.name,
         roundId,
+        isFirstFour,
         // Keep original home/away for display during live/scheduled
         homeTeam:  homeName, homeScore,
         awayTeam:  awayName, awayScore,
@@ -673,7 +704,7 @@ async function fetchScores() {
     // ── Compute live "hot" squares ────────────────────────────────────
     const newHot = new Set();
     for (const g of games) {
-      if (!g.isLive) continue;
+      if (!g.isLive || g.isFirstFour) continue;  // First Four excluded from pool
       const rn = state.roundNumbers?.[g.roundId];
       if (!rn?.cols || !rn?.rows) continue;
       // For live games use leading score as "winning" digit, trailing as "losing"
@@ -691,6 +722,7 @@ async function fetchScores() {
 
     // ── Auto-winner detection for newly finished games ────────────────
     for (const g of games) {
+      if (g.isFirstFour) continue;                               // First Four excluded — pool starts R64 (Mar 19)
       if (!g.isFinal || seenFinalIds.has(g.id)) continue;
       seenFinalIds.add(g.id);
       const rn = state.roundNumbers?.[g.roundId];
@@ -892,6 +924,9 @@ function renderScores() {
     const stLbl  = g.isLive
       ? (g.statusName === "STATUS_HALFTIME" ? "⏸ Halftime" : `🔴 ${g.statusDetail}`)
       : g.isFinal ? "✓ Final" : g.statusDetail;
+    const firstFourBadge = g.isFirstFour
+      ? `<span style="font-family:sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;background:#1a1030;color:#a78bfa;border:1px solid #4c1d95;border-radius:3px;padding:1px 5px;margin-left:6px;">FIRST FOUR · Not in pool</span>`
+      : "";
     const rn     = state.roundNumbers?.[activeRound];
 
     // Finals: show Winner on top, Loser on bottom. Live/scheduled: Home/Away.
@@ -934,10 +969,12 @@ function renderScores() {
         }
       }
     } catch(e) { /* never let winner footer crash the card */ }
+    // First Four games never show a winner footer — they're not part of the pool
+    if (g.isFirstFour) winnerFooter = "";
 
     const clickAttr = `style="cursor:default"`;
     return `<div class="score-card ${cls}" ${clickAttr}>
-      <div class="score-card-status ${stCls}">${stLbl}</div>
+      <div class="score-card-status ${stCls}">${stLbl}${firstFourBadge}</div>
       <div class="score-card-teams">
         <div class="score-team">
           <span class="score-team-name">${t1Name} <span style="font-size:9px;color:#555">(${t1Label})</span></span>
@@ -996,6 +1033,7 @@ function renderAdminContent() {
   renderAdminNumbers();
   renderScoreModeBtns();
   renderSquareLimit();
+  renderSquaresLock();
 }
 
 function renderAdminParticipants() {
@@ -1175,6 +1213,10 @@ window.handleSquareClick = async idx => {
 };
 
 window.openUnclaimModal = idx => {
+  if (state.squaresLocked && !adminAuthed) {
+    toast("🔒 Squares are locked — contact the admin to make changes.");
+    return;
+  }
   unclaimIdx = idx;
   document.getElementById("unclaim-sub").textContent = `Square #${idx+1} will be released.`;
   document.getElementById("unclaim-modal").classList.add("open");
@@ -1320,14 +1362,14 @@ window.setScoreMode = async mode => {
 };
 
 function renderScoreModeBtns() {
-  const mode = state.scoreMode ?? "regular";
+  const mode = state.scoreMode ?? "tournament";
   const rBtn = document.getElementById("mode-regular-btn");
   const tBtn = document.getElementById("mode-tournament-btn");
   const lbl  = document.getElementById("score-mode-label");
   if (!rBtn) return;
   rBtn.classList.toggle("active", mode === "regular");
   tBtn.classList.toggle("active", mode === "tournament");
-  lbl.textContent = mode === "tournament" ? "Filtering to NCAA Tournament games only" : "Showing all D1 games";
+  lbl.textContent = mode === "tournament" ? "🏀 NCAA Tournament games only (no NIT/CBI)" : "Showing all D1 games";
 }
 // Shared winner injection logic — used by both test tool and score card Set Winner button
 window.injectWinner = async (gameId, roundId, winScore, losScore, winTeam, losTeam, gameName) => {
@@ -1410,6 +1452,39 @@ function renderSquareLimit() {
   } else {
     st.textContent = "No limit set — all 100 squares open to the public.";
   }
+}
+window.lockAllSquares = async () => {
+  await update(ref(db, ROOT), { squaresLocked: true });
+  toast("🔒 All squares are now locked.");
+};
+
+window.openUnlockSquaresModal = () => {
+  document.getElementById("unlock-sq-pw").value = "";
+  document.getElementById("unlock-sq-err").style.display = "none";
+  document.getElementById("unlock-squares-modal").classList.add("open");
+  setTimeout(() => document.getElementById("unlock-sq-pw").focus(), 60);
+};
+
+window.confirmUnlockSquares = async () => {
+  const pw = document.getElementById("unlock-sq-pw").value;
+  if (pw !== ADMIN_PASSWORD) {
+    const e = document.getElementById("unlock-sq-err");
+    e.textContent = "Wrong password."; e.style.display = "block"; return;
+  }
+  document.getElementById("unlock-squares-modal").classList.remove("open");
+  await update(ref(db, ROOT), { squaresLocked: false });
+  toast("🔓 Squares unlocked — releases allowed again.");
+};
+
+function renderSquaresLock() {
+  const locked  = !!state.squaresLocked;
+  const lockBtn = document.getElementById("lock-squares-btn");
+  const lbl     = document.getElementById("squares-lock-label");
+  if (!lockBtn) return;
+  lockBtn.style.display = locked ? "none" : "inline-block";
+  lbl.innerHTML = locked
+    ? `<span style="color:var(--green);font-weight:700;">🔒 Squares are locked</span> — nobody can release picks`
+    : `<span style="color:#555;">Unlocked — participants can still release squares</span>`;
 }
 window.openAdmin  = () => document.getElementById("admin-modal").classList.add("open");
 window.closeAdmin = () => document.getElementById("admin-modal").classList.remove("open");
@@ -1501,7 +1576,7 @@ window.confirmUnlock = async () => {
 
 window.resetAll = async () => {
   if (!confirm("Reset ALL squares, numbers, and winners? This cannot be undone.")) return;
-  await set(ref(db, ROOT), { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{}, clearedWinners:{}, lockedRounds:{}, squareLimit:100 });
+  await set(ref(db, ROOT), { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{}, clearedWinners:{}, lockedRounds:{}, squareLimit:100, squaresLocked:false });
   espnGames=[]; seenFinalIds=new Set();
   toast("Board reset.");
 };
@@ -1521,7 +1596,7 @@ function setSaving(on) {
   el.textContent=on?"saving…":"● live"; el.classList.toggle("saving",on);
 }
 
-["identity-modal","admin-modal","unclaim-modal","view-modal","unlock-modal"].forEach(id => {
+["identity-modal","admin-modal","unclaim-modal","view-modal","unlock-modal","unlock-squares-modal"].forEach(id => {
   document.getElementById(id).addEventListener("click", e => {
     if (e.target===e.currentTarget) {
       e.currentTarget.classList.remove("open");
