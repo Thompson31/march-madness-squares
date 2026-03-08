@@ -120,7 +120,7 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 #scores-title   { font-family:sans-serif; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:8px; }
 .live-badge     { background:var(--live); color:#fff; font-size:9px; font-weight:700; letter-spacing:1.5px; padding:2px 7px; border-radius:3px; animation:pulse 2s infinite; }
 #scores-last-updated { font-family:sans-serif; font-size:10px; color:#555; }
-#scores-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+#scores-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr)); gap:10px; }
 .score-card     { background:var(--surf); border:1px solid var(--bdr2); border-radius:10px; padding:12px 14px; cursor:pointer; transition:border-color .15s,box-shadow .15s; }
 .score-card:hover { border-color:var(--acc); box-shadow:0 0 10px rgba(249,115,22,.15); }
 .score-card.final  { border-color:#1e3a1e; }
@@ -882,6 +882,10 @@ function renderScores() {
     const rank = g => g.isLive?0:g.isFinal?1:2;
     return rank(a)-rank(b);
   });
+  // Safe lookup map so onclick handlers never need inline string args
+  window._scoreCardGames = {};
+  sorted.forEach(g => { window._scoreCardGames[g.id] = g; });
+
   grid.innerHTML = sorted.map(g => {
     const cls    = g.isLive?"live":g.isFinal?"final":"sched";
     const stCls  = g.isLive?"sc-live":g.isFinal?"sc-final":"sc-sched";
@@ -901,33 +905,37 @@ function renderScores() {
     const d1 = rn?.cols ? `<span class="score-team-digit">${((t1Score%10)+10)%10}</span>` : "";
     const d2 = rn?.cols ? `<span class="score-team-digit">${((t2Score%10)+10)%10}</span>` : "";
 
-    // Look up if this game has a recorded winner
+    // Winner footer — safe: uses data-gid lookup, no team name string interpolation
     let winnerFooter = "";
-    if (g.isFinal && rn?.cols) {
-      const det = Object.values(state.winnerDetails ?? {}).find(d => d?.gameId === g.id);
-      if (det) {
-        const sq = state.squares?.[String(det.squareIdx)];
-        const name = sq?.name ?? "Unclaimed";
-        winnerFooter = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e2340;display:flex;align-items:center;gap:6px;">
-          <span style="font-size:13px;">🏆</span>
-          <span style="font-family:sans-serif;font-size:12px;font-weight:700;color:var(--acc);">${name}</span>
-          <span style="font-family:sans-serif;font-size:10px;color:#555;">· Sq #${det.squareIdx+1}</span>
-        </div>`;
-      } else if (rn?.cols) {
-        // Numbers drawn but no winner yet — show which square would win
-        const col = rn.cols.indexOf(((t1Score%10)+10)%10);
-        const row = rn.rows.indexOf(((t2Score%10)+10)%10);
-        if (col !== -1 && row !== -1) {
-          const idx = row*10+col;
-          const sq  = state.squares?.[String(idx)];
-          winnerFooter = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e2340;font-family:sans-serif;font-size:11px;color:#555;">
-            Sq #${idx+1} — ${sq?.name ?? "Unclaimed"}${adminAuthed ? ` <button onclick="injectWinner('${g.id}','${g.roundId}',${t1Score},${t2Score},'${(g.winnerTeam||'').replace(/'/g,"\\'")}','${(g.loserTeam||'').replace(/'/g,"\\'")}','${(g.name||'').replace(/'/g,"\\'")}'); event.stopPropagation();" style="margin-left:6px;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:10px;padding:2px 7px;cursor:pointer;font-weight:700;">Set Winner</button>` : ""}
+    try {
+      if (g.isFinal && rn?.cols) {
+        const det = Object.values(state.winnerDetails ?? {}).find(d => d?.gameId === g.id);
+        if (det) {
+          const sq   = state.squares?.[String(det.squareIdx)];
+          const name = sq?.name ?? "Unclaimed";
+          winnerFooter = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e2340;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:13px;">🏆</span>
+            <span style="font-family:sans-serif;font-size:12px;font-weight:700;color:var(--acc);">${name}</span>
+            <span style="font-family:sans-serif;font-size:10px;color:#555;">· Sq #${det.squareIdx+1}</span>
           </div>`;
+        } else {
+          const col = rn.cols.indexOf(((t1Score%10)+10)%10);
+          const row = rn.rows.indexOf(((t2Score%10)+10)%10);
+          if (col !== -1 && row !== -1) {
+            const idx = row*10+col;
+            const sq  = state.squares?.[String(idx)];
+            const setBtn = adminAuthed
+              ? `<button data-gid="${g.id}" onclick="scoreCardSetWinner(this);event.stopPropagation();" style="margin-left:6px;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:10px;padding:2px 7px;cursor:pointer;font-weight:700;">Set Winner</button>`
+              : "";
+            winnerFooter = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e2340;font-family:sans-serif;font-size:11px;color:#555;">
+              Sq #${idx+1} — ${sq?.name ?? "Unclaimed"}${setBtn}
+            </div>`;
+          }
         }
       }
-    }
+    } catch(e) { /* never let winner footer crash the card */ }
 
-    const clickAttr = adminAuthed && g.isFinal ? `onclick="fillScoreFinder(${t1Score},${t2Score})" style="cursor:pointer"` : `style="cursor:default"`;
+    const clickAttr = `style="cursor:default"`;
     return `<div class="score-card ${cls}" ${clickAttr}>
       <div class="score-card-status ${stCls}">${stLbl}</div>
       <div class="score-card-teams">
@@ -943,6 +951,16 @@ function renderScores() {
     </div>`;
   }).join("");
 }
+
+// Safe Set Winner handler — looks up game by ID, never uses inline string interpolation
+window.scoreCardSetWinner = async btn => {
+  btn.disabled = true;
+  const gid = btn.getAttribute("data-gid");
+  const g   = window._scoreCardGames?.[gid];
+  if (!g) { toast("Game data not found."); return; }
+  await injectWinner(g.id, g.roundId, g.winnerScore, g.loserScore,
+    g.winnerTeam, g.loserTeam, g.name);
+};
 
 function renderWinnersLeaderboard() {
   const list = document.getElementById("winners-list");
