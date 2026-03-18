@@ -390,7 +390,7 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
     <!-- Step 2: quantity + Venmo -->
     <div id="identity-step2" style="display:none;">
       <h3>How many squares?</h3>
-      <p class="sub" id="step2-sub">Each square is <strong style="color:#fff;">$100</strong>. Pick your quantity and send payment via Venmo before claiming.</p>
+      <p class="sub" id="step2-sub">Each square is <strong style="color:#fff;">$0</strong>. Pick your quantity and send payment via Venmo before claiming.</p>
       <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin:20px 0;">
         <button onclick="adjustQty(-1)" style="width:40px;height:40px;font-size:22px;font-weight:700;background:var(--surf);border:1px solid var(--bdr2);border-radius:8px;color:#fff;cursor:pointer;line-height:1;">−</button>
         <div style="text-align:center;">
@@ -401,8 +401,8 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
       </div>
       <div id="venmo-total-box" style="background:#0a1a0a;border:1px solid #1a4a1a;border-radius:10px;padding:14px;text-align:center;margin-bottom:16px;">
         <div style="font-family:sans-serif;font-size:12px;color:var(--muted);margin-bottom:4px;">Total due</div>
-        <div id="venmo-total-amt" style="font-size:32px;font-weight:900;color:var(--green);">$100</div>
-        <div id="venmo-total-note" style="font-family:sans-serif;font-size:11px;color:#555;margin-top:4px;">1 square × $100</div>
+        <div id="venmo-total-amt" style="font-size:32px;font-weight:900;color:var(--green);">$0</div>
+        <div id="venmo-total-note" style="font-family:sans-serif;font-size:11px;color:#555;margin-top:4px;">1 square × $0</div>
       </div>
       <button id="venmo-pay-btn" onclick="openVenmo()" style="width:100%;padding:14px;background:#008CFF;border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M19.3 2c.8 1.3 1.1 2.6 1.1 4.3 0 5.4-4.6 12.4-8.3 17.3H4.4L1.2 2.8l7.2-.7 1.8 14c1.7-2.8 3.7-7.2 3.7-10.2 0-1.6-.3-2.8-.7-3.7L19.3 2z"/></svg>
