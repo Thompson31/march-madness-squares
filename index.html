@@ -105,7 +105,7 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 .square.claimed { background:var(--blue); border-color:var(--blue-b); cursor:default; }
 .square.mine    { background:#2a1400; border-color:#7c3010; color:var(--acc); cursor:pointer; box-shadow:0 0 8px rgba(249,115,22,.3); }
 .square.mine:hover { border-color:var(--red); }
-.square.winner  { background:var(--acc)!important; border-color:var(--acc2)!important; color:#fff!important; box-shadow:0 0 18px rgba(249,115,22,.6)!important; animation:pop .4s ease; cursor:default; }
+.square.winner  { background:transparent!important; border:2px solid var(--green)!important; color:var(--green)!important; box-shadow:0 0 10px rgba(74,222,128,.35)!important; animation:pop .4s ease; cursor:default; position:relative; }
 .square.reserved { background:#0e1020!important; border-color:#181828!important; cursor:not-allowed!important; color:#2a2a3a!important; }
 .square.reserved::after { content:'🔒'; font-size:10px; }
 /* Live "currently winning" highlight — updates every score poll */
@@ -113,8 +113,12 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 .square.hot.claimed { background:#2a0a14!important; color:#fda4af!important; }
 .square.hot.empty   { background:#1a0810!important; color:#f43f5e!important; }
 .square.hot.mine    { background:#2a0814!important; color:#fda4af!important; }
+/* Winner square that is also currently live — green text stays, red border + pulse takes over */
+.square.hot.winner  { background:#0a1a0a!important; color:var(--green)!important; border-color:#f43f5e!important; box-shadow:0 0 14px rgba(244,63,94,.8)!important; }
 /* small "LIVE" pip on hot squares */
 .square.hot::after { content:''; position:absolute; top:3px; right:3px; width:5px; height:5px; background:var(--live); border-radius:50%; animation:pulse 1s infinite; }
+/* win-count badge (×2, ×3) on multi-win squares */
+.win-badge { position:absolute; bottom:2px; right:3px; font-size:8px; font-weight:900; color:var(--green); line-height:1; pointer-events:none; }
 
 /* ── Live scores section ── */
 #scores-section { max-width:600px; margin:24px auto 0; }
@@ -885,16 +889,14 @@ function renderSquares() {
   const grid = document.getElementById("sq-grid");
   grid.innerHTML = "";
 
-  const limit     = state.squareLimit ?? 100;   // max public claims
+  const limit     = state.squareLimit ?? 100;
   const claimed   = Object.keys(state.squares ?? {}).length;
-  const remaining = limit - claimed;             // how many more public can claim
 
-  // Collect ALL winning square indices for the active round
-  const roundWinners = new Set(
-    Object.values(state.winnerDetails ?? {})
-      .filter(d => d && d.roundId === activeRound && d.squareIdx != null)
-      .map(d => d.squareIdx)
-  );
+  // Build win-count map: squareIdx → number of wins this round
+  const winCount = {};
+  Object.values(state.winnerDetails ?? {})
+    .filter(d => d && d.roundId === activeRound && d.squareIdx != null)
+    .forEach(d => { winCount[d.squareIdx] = (winCount[d.squareIdx] ?? 0) + 1; });
 
   for (let ri=0;ri<10;ri++) {
     const row = document.createElement("div");
@@ -902,15 +904,22 @@ function renderSquares() {
     for (let ci=0;ci<10;ci++) {
       const idx    = ri*10+ci;
       const sq     = state.squares?.[String(idx)];
-      const isW    = roundWinners.has(idx);
+      const wins   = winCount[idx] ?? 0;
+      const isW    = wins > 0;
       const isMine = session && sq && sq.email === session.email;
-      const isHot  = !isW && hotSquares.has(idx);
+      const isHot  = hotSquares.has(idx);   // hot can now layer on winner too
       const el     = document.createElement("div");
 
       if (isW) {
-        el.className   = "square winner";
+        el.className = `square winner${isHot ? " hot" : ""}`;
         el.textContent = sq ? trunc(sq.name) : "?";
-        el.title       = sq?.name ?? "unclaimed winner";
+        el.title = (sq?.name ?? "Unclaimed") + (wins > 1 ? ` — ${wins} wins this round!` : " — winner!");
+        if (wins > 1) {
+          const badge = document.createElement("span");
+          badge.className = "win-badge";
+          badge.textContent = `×${wins}`;
+          el.appendChild(badge);
+        }
       } else if (isMine) {
         el.className   = `square mine${isHot?" hot":""}`;
         el.textContent = trunc(sq.name);
