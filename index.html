@@ -691,6 +691,7 @@ let unclaimIdx  = null;
 let espnGames    = [];
 let hotSquares   = new Set();  // square indices currently "winning" in a live game
 let seenFinalIds = new Set();  // games already processed for auto-winner
+let firebaseReady = false;     // gate: don't run winner detection until Firebase has loaded once
 
 // ── Firebase ─────────────────────────────────────────────────────────
 onValue(ref(db, ROOT), snap => {
@@ -699,6 +700,12 @@ onValue(ref(db, ROOT), snap => {
   // Pre-populate seenFinalIds from already-recorded winners so any client
   // that opens or refreshes never re-processes a game that's already saved
   Object.keys(state.winners ?? {}).forEach(gid => seenFinalIds.add(gid));
+  if (!firebaseReady) {
+    firebaseReady = true;
+    // First Firebase load complete — now safe to start polling ESPN
+    fetchScores();
+    setInterval(fetchScores, SCORE_POLL_MS);
+  }
   render();
 });
 
@@ -840,9 +847,7 @@ async function fetchScores() {
   }
 }
 
-// Poll
-fetchScores();
-setInterval(fetchScores, SCORE_POLL_MS);
+// Poll starts inside onValue handler once Firebase has loaded — see firebaseReady flag above
 
 // ── Render ────────────────────────────────────────────────────────────
 function render() {
@@ -1698,7 +1703,9 @@ window.adminClearWinner = async gameId => {
     [`winners/${gameId}`]:       null,
     [`winnerDetails/${gameId}`]: null,
   });
-  toast("Winner cleared.");
+  // Remove from seenFinalIds so auto-detection can re-fire on the next ESPN poll
+  seenFinalIds.delete(gameId);
+  toast("Winner cleared — will re-detect on next score poll.");
 };
 
 window.drawRound = async roundId => {
