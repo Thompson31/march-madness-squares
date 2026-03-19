@@ -632,7 +632,7 @@ input:focus { outline:2px solid var(--acc); border-color:transparent; }
 <!-- ════ Firebase + App Logic ════ -->
 <script type="module">
 import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, remove }
+import { getDatabase, ref, set, get, onValue, update, remove }
                           from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 if (FIREBASE_CONFIG.apiKey === "PASTE_YOUR_apiKey_HERE") {
@@ -692,6 +692,9 @@ let seenFinalIds = new Set();  // games already processed for auto-winner
 onValue(ref(db, ROOT), snap => {
   state = snap.val() ?? { squares:{}, roundNumbers:{}, winners:{}, winnerDetails:{} };
   if (!state.winnerDetails) state.winnerDetails = {};
+  // Pre-populate seenFinalIds from already-recorded winners so any client
+  // that opens or refreshes never re-processes a game that's already saved
+  Object.keys(state.winners ?? {}).forEach(gid => seenFinalIds.add(gid));
   render();
 });
 
@@ -790,12 +793,17 @@ async function fetchScores() {
     for (const g of games) {
       if (g.isFirstFour) continue;                               // First Four excluded — pool starts R64 (Mar 19)
       if (!g.isFinal || seenFinalIds.has(g.id)) continue;
-      seenFinalIds.add(g.id);
+      seenFinalIds.add(g.id);                                    // claim it immediately so no other poll can race
       const rn = state.roundNumbers?.[g.roundId];
       if (!rn?.cols || !rn?.rows) continue;
-      if (state.clearedWinners?.[g.roundId]) continue;        // manually cleared — skip
-      // Use game ID as key so every game gets its own winner entry
-      if (state.winners?.[g.id] != null) continue;            // already recorded for this game
+      if (state.clearedWinners?.[g.roundId]) continue;          // round manually cleared — skip
+      if (state.clearedWinners?.[g.id]) continue;               // game specifically cleared — skip
+      if (state.winners?.[g.id] != null) continue;              // already recorded — skip (local state check)
+      // Hard re-check against live Firebase before writing — closes the race window
+      try {
+        const liveSnap = await get(ref(db, `${ROOT}/winners/${g.id}`));
+        if (liveSnap.exists()) continue;                         // another client already wrote it — skip
+      } catch(e) { /* network hiccup — proceed anyway, seenFinalIds will block double-splash */ }
       const col = rn.cols.indexOf(((g.winnerScore%10)+10)%10);
       const row = rn.rows.indexOf(((g.loserScore%10)+10)%10);
       if (col === -1 || row === -1) continue;
